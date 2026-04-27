@@ -6,28 +6,24 @@ import { cn } from '@/lib/utils'
 
 const slides = [
   {
-    emoji: '🎤',
     title: 'Practice with AI mocks',
     desc: 'Answer real interview questions tailored to your role and industry. Text or voice — your choice.',
     color: 'var(--color-cz-gold)',
     bg: 'var(--color-cz-gold-dim)',
   },
   {
-    emoji: '⚡',
     title: 'Get instant feedback',
     desc: 'Every answer is scored on clarity, confidence, relevance and accuracy. Know exactly where you stand.',
     color: 'var(--color-cz-teal)',
     bg: 'var(--color-cz-teal-dim)',
   },
   {
-    emoji: '📊',
     title: 'Track your progress',
     desc: 'Session scores, skill heatmaps, and trend charts show your improvement over time.',
     color: '#7aad8a',
     bg: 'rgba(122, 173, 138, 0.12)',
   },
   {
-    emoji: '🎯',
     title: 'Personalize every session',
     desc: 'Paste a job description and get questions crafted directly from the role requirements.',
     color: 'var(--color-cz-gold-light)',

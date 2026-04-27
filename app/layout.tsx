@@ -16,6 +16,7 @@ const dmSans = DM_Sans({
 })
 
 export const metadata: Metadata = {
+  icons: '/CareerZiel.png',
   title: 'CareerZiel — AI Interview Practice',
   description: 'Ace your next interview with AI-powered mock interviews, instant feedback, and progress analytics.',
 }

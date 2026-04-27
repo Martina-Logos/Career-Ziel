@@ -9,10 +9,9 @@ import Button from '@/components/ui/Button'
 
 type Step = 'mode' | 'config'
 
-const modes: { id: PracticeMode; icon: string; title: string; desc: string; time: string; features: string[]; premium?: boolean }[] = [
+const modes: { id: PracticeMode; title: string; desc: string; time: string; features: string[]; premium?: boolean }[] = [
   {
     id: 'text',
-    icon: '⌨️',
     title: 'Text Practice',
     desc: 'Classic Q&A. Type your answers, get instant AI feedback.',
     time: '15–30 min',
@@ -20,7 +19,6 @@ const modes: { id: PracticeMode; icon: string; title: string; desc: string; time
   },
   {
     id: 'video',
-    icon: '🎥',
     title: 'Video Mock',
     desc: 'Full simulation with your camera. See yourself while you answer.',
     time: '30–45 min',

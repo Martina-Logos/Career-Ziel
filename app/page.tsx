@@ -1,33 +1,28 @@
+import Image from 'next/image'
 import Link from 'next/link'
 
 const features = [
   {
-    icon: '⚡',
     title: 'AI Mock Interviews',
     desc: 'Realistic questions tailored to your target role and industry, powered by Claude AI.',
   },
   {
-    icon: '🎯',
     title: 'Personalized Questions',
     desc: 'Paste a job description and get questions crafted from the actual requirements.',
   },
   {
-    icon: '📊',
     title: 'Deep Analytics',
     desc: 'Track clarity, confidence, relevance and technical accuracy across sessions.',
   },
   {
-    icon: '🔁',
     title: 'Progress Tracking',
     desc: 'See your improvement over time with score trends and skill mastery bars.',
   },
   {
-    icon: '🎤',
     title: 'Voice Input',
     desc: 'Answer questions by speaking naturally — just like a real interview.',
   },
   {
-    icon: '🏆',
     title: 'Instant Feedback',
     desc: 'Get detailed AI feedback on every answer with actionable suggestions.',
   },
@@ -60,11 +55,14 @@ export default function LandingPage() {
       {/* Top nav */}
       <header className="border-b border-[var(--color-cz-border)] px-8 py-4 flex items-center justify-between sticky top-0 bg-[var(--color-cz-bg)]/90 backdrop-blur-md z-50">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-[var(--color-cz-violet)] flex items-center justify-center">
-            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-          </div>
+<div className="w-8 h-8 relative overflow-hidden rounded-lg">
+  <Image
+    src="/CareerZiel.png"
+    alt="CareerZiel logo"
+    fill
+    className="object-cover"
+  />
+</div>
           <span className="font-syne font-bold text-lg tracking-tight">CareerZiel</span>
         </div>
         <nav className="hidden md:flex items-center gap-6 text-sm text-[var(--color-cz-muted)]">
@@ -82,7 +80,7 @@ export default function LandingPage() {
       <section className="px-8 pt-24 pb-20 max-w-6xl mx-auto text-center">
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-[var(--color-cz-violet)]/30 bg-[var(--color-cz-violet-dim)] text-xs font-medium text-[var(--color-cz-violet-light)] mb-8">
           <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-cz-violet-light)] animate-pulse" />
-          Powered by Claude AI
+          Career Ziel
         </div>
         <h1 className="font-syne font-800 text-5xl md:text-7xl leading-[1.05] tracking-tighter mb-6">
           Ace Your Next<br />

@@ -30,12 +30,12 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
 
           <div className="space-y-4">
             {[
-              { icon: '⚡', text: 'Instant AI feedback on every answer' },
-              { icon: '📊', text: 'Track progress across sessions' },
-              { icon: '🎯', text: 'Questions from real job descriptions' },
+              { text: 'Instant AI feedback on every answer' },
+              { text: 'Track progress across sessions' },
+              { text: 'Questions from real job descriptions' },
             ].map((item, i) => (
               <div key={i} className="flex items-center gap-3">
-                <span className="text-lg">{item.icon}</span>
+                <span className="text-lg">✓</span>
                 <span className="text-sm text-[var(--color-cz-muted)]">{item.text}</span>
               </div>
             ))}

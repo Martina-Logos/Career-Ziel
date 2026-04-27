@@ -2,45 +2,62 @@
 
 @theme {
   --font-syne: var(--font-syne);
-  --font-dm: var(--font-dm);
+  --font-dm:   var(--font-dm);
 
-  /* ── Palette: Black Mesa / Olive Leaf / Lobster Butter Sauce ── */
+  /* ── Palette: th8via ── */
+  /* #401F28  Deep Burgundy  — primary accent, CTAs                */
+  /* #E9E2DA  Warm Cream     — backgrounds, large surfaces         */
+  /* #B5C5D4  Powder Blue    — secondary accent, info, charts      */
 
-  /* Backgrounds — deepest to lightest */
-  --color-cz-bg:       #1a1910;   /* deeper than Black Mesa for true bg */
-  --color-cz-surface:  #232213;   /* Black Mesa — primary card surface   */
-  --color-cz-surface2: #2d2c1c;   /* slightly lifted surface             */
-  --color-cz-surface3: #383723;   /* hover / elevated surface            */
-  --color-cz-olive:    #4D4937;   /* Olive Leaf — borders, dividers      */
+  /* Backgrounds */
+  --color-cz-bg:       #F4EFE9;   /* slightly deeper cream page bg  */
+  --color-cz-surface:  #FFFFFF;   /* pure white card                */
+  --color-cz-surface2: #F0EAE2;   /* cream — inner surface, inputs  */
+  --color-cz-surface3: #E4DDD5;   /* hover state                    */
 
   /* Borders */
-  --color-cz-border:  rgba(220, 221, 223, 0.07);   /* subtle on dark     */
-  --color-cz-border2: rgba(220, 221, 223, 0.14);   /* hover border       */
-  --color-cz-border3: rgba(77,  73,  55,  0.8);    /* olive border       */
+  --color-cz-border:  rgba(64, 31, 40, 0.08);   /* soft burgundy tint */
+  --color-cz-border2: rgba(64, 31, 40, 0.16);
+  --color-cz-border3: rgba(64, 31, 40, 0.28);
 
   /* Text */
-  --color-cz-text:    #DCDDDF;   /* Script White — primary text          */
-  --color-cz-muted:   #94938E;   /* Winter Park — secondary/hint text    */
-  --color-cz-subtle:  #5a594f;   /* very muted, disabled states          */
+  --color-cz-text:    #2A1A1E;   /* near-black, warm */
+  --color-cz-muted:   #7A6E72;   /* mid-brown-grey   */
+  --color-cz-subtle:  #B0A5A9;   /* disabled / hint  */
 
-  /* Accent — Lobster Butter Sauce */
-  --color-cz-gold:       #CC8E0E;
-  --color-cz-gold-light: #e8a824;
-  --color-cz-gold-dim:   rgba(204, 142, 14, 0.14);
-  --color-cz-gold-border: rgba(204, 142, 14, 0.30);
+  /* Primary accent — Deep Burgundy */
+  --color-cz-burg:        #401F28;
+  --color-cz-burg-hover:  #5a2c38;
+  --color-cz-burg-light:  #7a4554;
+  --color-cz-burg-dim:    rgba(64, 31, 40, 0.08);
+  --color-cz-burg-border: rgba(64, 31, 40, 0.20);
 
-  /* Semantic — success / warning / danger (olive-palette-harmonious) */
-  --color-cz-teal:     #7aad8a;   /* muted sage green for success        */
-  --color-cz-teal-dim: rgba(122, 173, 138, 0.13);
-  --color-cz-amber:    #CC8E0E;   /* reuse gold for warnings             */
-  --color-cz-amber-dim: rgba(204, 142, 14, 0.13);
-  --color-cz-red:      #c0614a;   /* warm terracotta red                 */
-  --color-cz-red-dim:  rgba(192,  97,  74, 0.13);
+  /* Secondary accent — Powder Blue */
+  --color-cz-blue:        #B5C5D4;
+  --color-cz-blue-dark:   #7A9AB5;
+  --color-cz-blue-deep:   #4A7A9B;
+  --color-cz-blue-dim:    rgba(181, 197, 212, 0.35);
+  --color-cz-blue-border: rgba(74, 122, 155, 0.25);
 
-  /* Legacy violet aliases → gold for compat with existing components */
-  --color-cz-violet:       #CC8E0E;
-  --color-cz-violet-light: #e8a824;
-  --color-cz-violet-dim:   rgba(204, 142, 14, 0.14);
+  /* Semantic */
+  --color-cz-green:     #4A7A5A;
+  --color-cz-green-dim: rgba(74, 122, 90, 0.10);
+  --color-cz-amber:     #A0622A;
+  --color-cz-amber-dim: rgba(160, 98, 42, 0.10);
+  --color-cz-red:       #8B3535;
+  --color-cz-red-dim:   rgba(139, 53, 53, 0.10);
+
+  /* Legacy aliases so old component refs still resolve */
+  --color-cz-gold:        #401F28;
+  --color-cz-gold-light:  #5a2c38;
+  --color-cz-gold-pale:   #7a4554;
+  --color-cz-gold-dim:    rgba(64, 31, 40, 0.08);
+  --color-cz-gold-border: rgba(64, 31, 40, 0.20);
+  --color-cz-teal:        #4A7A5A;
+  --color-cz-teal-dim:    rgba(74, 122, 90, 0.10);
+  --color-cz-violet:       #401F28;
+  --color-cz-violet-light: #5a2c38;
+  --color-cz-violet-dim:   rgba(64, 31, 40, 0.08);
 
   /* Border radius */
   --radius-sm:  6px;
@@ -50,13 +67,8 @@
   --radius-2xl: 28px;
 }
 
-* {
-  box-sizing: border-box;
-}
-
-html {
-  scroll-behavior: smooth;
-}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
 
 body {
   font-family: var(--font-dm), 'DM Sans', sans-serif;
@@ -65,105 +77,87 @@ body {
   min-height: 100vh;
 }
 
-.font-syne {
-  font-family: var(--font-syne), 'Syne', sans-serif;
-}
-
-.font-dm {
-  font-family: var(--font-dm), 'DM Sans', sans-serif;
-}
+.font-syne { font-family: var(--font-syne), 'Syne', sans-serif; }
+.font-dm   { font-family: var(--font-dm),   'DM Sans', sans-serif; }
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--color-cz-surface3); border-radius: 4px; }
 
-/* Gradient text — warm gold to script white */
+/* Gradient text — burgundy to blue */
 .gradient-text {
-  background: linear-gradient(135deg, var(--color-cz-gold-light) 0%, #d4b86a 50%, var(--color-cz-text) 100%);
+  background: linear-gradient(135deg, var(--color-cz-burg) 0%, #7a4554 40%, var(--color-cz-blue-dark) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-/* Glass card */
+/* Card */
 .glass-card {
   background: var(--color-cz-surface);
   border: 1px solid var(--color-cz-border);
   border-radius: var(--radius-lg);
 }
 
-/* Accent line top — gold */
+/* Accent line top — burgundy */
 .accent-top::before {
   content: '';
   position: absolute;
   top: 0; left: 0; right: 0;
   height: 2px;
-  background: linear-gradient(90deg, var(--color-cz-gold), var(--color-cz-gold-light));
+  background: linear-gradient(90deg, var(--color-cz-burg), var(--color-cz-blue-dark));
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 
 /* Animations */
 @keyframes fadeUp {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
-
 @keyframes fadeIn {
   from { opacity: 0; }
-  to { opacity: 1; }
+  to   { opacity: 1; }
 }
-
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(0.85); }
-}
-
 @keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1;   transform: scale(1);    }
+  50%       { opacity: 0.5; transform: scale(0.85); }
 }
 
 .animate-fade-up { animation: fadeUp 0.4s ease forwards; }
 .animate-fade-in { animation: fadeIn 0.3s ease forwards; }
 
 .stagger-1 { animation-delay: 0.05s; opacity: 0; }
-.stagger-2 { animation-delay: 0.1s; opacity: 0; }
+.stagger-2 { animation-delay: 0.10s; opacity: 0; }
 .stagger-3 { animation-delay: 0.15s; opacity: 0; }
-.stagger-4 { animation-delay: 0.2s; opacity: 0; }
+.stagger-4 { animation-delay: 0.20s; opacity: 0; }
 .stagger-5 { animation-delay: 0.25s; opacity: 0; }
 
-/* Score ring */
-.score-ring {
-  stroke-dasharray: 251.2;
-  stroke-dashoffset: 251.2;
-  transition: stroke-dashoffset 1.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* Input styles */
+/* Input */
 .cz-input {
   width: 100%;
   background: var(--color-cz-surface2);
-  border: 1px solid var(--color-cz-border);
+  border: 1px solid var(--color-cz-border2);
   border-radius: var(--radius-md);
-  padding: 0.75rem 1rem;
+  padding: 0.72rem 1rem;
   color: var(--color-cz-text);
   font-family: var(--font-dm);
   font-size: 0.9rem;
-  transition: border-color 0.2s;
+  transition: border-color 0.18s, box-shadow 0.18s;
   outline: none;
 }
-
 .cz-input:focus {
-  border-color: var(--color-cz-gold);
-  box-shadow: 0 0 0 3px var(--color-cz-gold-dim);
+  border-color: var(--color-cz-burg);
+  box-shadow: 0 0 0 3px var(--color-cz-burg-dim);
+  background: var(--color-cz-surface);
 }
+.cz-input::placeholder { color: var(--color-cz-subtle); }
 
-.cz-input::placeholder {
-  color: var(--color-cz-subtle);
-}
-
-/* Button base */
+/* Buttons */
 .cz-btn {
   display: inline-flex;
   align-items: center;
@@ -181,21 +175,28 @@ body {
   letter-spacing: 0.01em;
 }
 
-/* Primary — Lobster Butter Sauce gold, dark text for contrast */
+/* Primary — Deep Burgundy */
 .cz-btn-primary {
-  background: var(--color-cz-gold);
-  color: #1a1910;
+  background: var(--color-cz-burg);
+  color: #F4EFE9;
 }
-.cz-btn-primary:hover { background: var(--color-cz-gold-light); transform: translateY(-1px); box-shadow: 0 4px 20px var(--color-cz-gold-dim); }
+.cz-btn-primary:hover {
+  background: var(--color-cz-burg-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(64,31,40,0.22);
+}
 .cz-btn-primary:active { transform: translateY(0); box-shadow: none; }
 
-/* Secondary — Olive Leaf surface */
+/* Secondary — cream surface */
 .cz-btn-secondary {
-  background: var(--color-cz-surface2);
+  background: var(--color-cz-surface);
   color: var(--color-cz-text);
   border: 1px solid var(--color-cz-border2);
 }
-.cz-btn-secondary:hover { border-color: var(--color-cz-gold-border); background: var(--color-cz-surface3); }
+.cz-btn-secondary:hover {
+  border-color: var(--color-cz-burg-border);
+  background: var(--color-cz-surface2);
+}
 
 /* Ghost */
 .cz-btn-ghost {
@@ -204,9 +205,14 @@ body {
 }
 .cz-btn-ghost:hover { color: var(--color-cz-text); }
 
-.cz-btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
+.cz-btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
 
-/* Skeleton shimmer */
+/* Skeleton */
 .skeleton {
   background: linear-gradient(90deg, var(--color-cz-surface2) 25%, var(--color-cz-surface3) 50%, var(--color-cz-surface2) 75%);
   background-size: 200% 100%;
