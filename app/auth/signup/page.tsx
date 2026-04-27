@@ -1,250 +1,116 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Eye, EyeOff, Zap, ArrowRight, Loader2, Check, X } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useUser } from '@/lib/stores'
-import { toast } from 'sonner'
+import { useApp, MOCK_USER } from '@/context/AppContext'
+import Input from '@/components/ui/Input'
+import Button from '@/components/ui/Button'
+import { cn } from '@/lib/utils'
+
+function passwordStrength(p: string): { score: number; label: string; color: string } {
+  let score = 0
+  if (p.length >= 8) score++
+  if (/[A-Z]/.test(p)) score++
+  if (/[0-9]/.test(p)) score++
+  if (/[^A-Za-z0-9]/.test(p)) score++
+  const labels = ['', 'Weak', 'Fair', 'Good', 'Strong']
+  const colors = ['', 'var(--color-cz-red)', 'var(--color-cz-amber)', 'var(--color-cz-teal)', 'var(--color-cz-teal)']
+  return { score, label: labels[score] || '', color: colors[score] || '' }
+}
 
 export default function SignupPage() {
+  const { setUser } = useApp()
   const router = useRouter()
-  const { signup } = useUser()
-  const [isLoading, setIsLoading] = useState(false)
+  const [form, setForm] = useState({ name: '', email: '', password: '' })
+  const [agreed, setAgreed] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [agreedToTerms, setAgreedToTerms] = useState(false)
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    password: '',
-  })
 
-  const passwordStrength = useMemo(() => {
-    const password = formData.password
-    const checks = {
-      length: password.length >= 8,
-      uppercase: /[A-Z]/.test(password),
-      lowercase: /[a-z]/.test(password),
-      number: /[0-9]/.test(password),
-      special: /[!@#$%^&*(),.?":{}|<>]/.test(password),
-    }
-    const score = Object.values(checks).filter(Boolean).length
-    return { checks, score }
-  }, [formData.password])
+  const pw = passwordStrength(form.password)
 
-  const getStrengthColor = (score: number) => {
-    if (score <= 2) return 'bg-destructive'
-    if (score <= 3) return 'bg-warning'
-    return 'bg-success'
+  function update(field: string) {
+    return (e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, [field]: e.target.value }))
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  async function handleSignup(e: React.FormEvent) {
     e.preventDefault()
-    if (!formData.name || !formData.email || !formData.password) {
-      toast.error('Please fill in all fields')
-      return
-    }
-    if (!agreedToTerms) {
-      toast.error('Please agree to the terms and conditions')
-      return
-    }
-    if (passwordStrength.score < 3) {
-      toast.error('Please use a stronger password')
-      return
-    }
-
-    setIsLoading(true)
-    try {
-      await signup(formData.email, formData.password, formData.name)
-      toast.success('Account created successfully!')
-      router.push('/welcome')
-    } catch {
-      toast.error('Something went wrong')
-    } finally {
-      setIsLoading(false)
-    }
+    if (!form.name || !form.email || !form.password) { setError('Please fill in all fields.'); return }
+    if (!agreed) { setError('Please agree to the terms.'); return }
+    if (pw.score < 2) { setError('Please choose a stronger password.'); return }
+    setLoading(true)
+    setError('')
+    await new Promise(r => setTimeout(r, 900))
+    setUser({ ...MOCK_USER, name: form.name, email: form.email })
+    router.push('/onboarding')
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4 py-12">
-      <Link href="/" className="mb-8 flex items-center gap-2">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-          <Zap className="h-5 w-5 text-primary-foreground" />
-        </div>
-        <span className="text-2xl font-bold">InterviewAI</span>
-      </Link>
+    <div className="animate-fade-up">
+      <div className="mb-8">
+        <h1 className="font-syne font-700 text-2xl tracking-tight mb-1.5">Create your account</h1>
+        <p className="text-sm text-[var(--color-cz-muted)]">
+          Already have one?{' '}
+          <Link href="/auth/login" className="text-[var(--color-cz-violet-light)] hover:underline">Sign in</Link>
+        </p>
+      </div>
 
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Create your account</CardTitle>
-          <CardDescription>
-            Start your interview preparation journey
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Full Name</Label>
-              <Input
-                id="name"
-                type="text"
-                placeholder="John Doe"
-                value={formData.name}
-                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                disabled={isLoading}
-              />
-            </div>
+      <form onSubmit={handleSignup} className="space-y-4">
+        {error && (
+          <div className="px-4 py-3 rounded-[var(--radius-md)] bg-[var(--color-cz-red-dim)] border border-[var(--color-cz-red)]/20 text-sm text-[var(--color-cz-red)]">
+            {error}
+          </div>
+        )}
 
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={formData.email}
-                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                disabled={isLoading}
-              />
-            </div>
+        <Input label="Full Name" placeholder="Alex Mukasa" value={form.name} onChange={update('name')} autoComplete="name" />
+        <Input label="Email" type="email" placeholder="you@example.com" value={form.email} onChange={update('email')} autoComplete="email" />
 
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="Create a strong password"
-                  value={formData.password}
-                  onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                  disabled={isLoading}
-                  className="pr-10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-[var(--color-cz-muted)] uppercase tracking-wider">Password</label>
+          <div className="relative">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              placeholder="Create a strong password"
+              value={form.password}
+              onChange={update('password')}
+              autoComplete="new-password"
+              className="cz-input pr-11"
+            />
+            <button type="button" onClick={() => setShowPassword(p => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-cz-muted)] hover:text-[var(--color-cz-text)]">
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+            </button>
+          </div>
+          {form.password && (
+            <div className="flex items-center gap-2 mt-1">
+              <div className="flex gap-1 flex-1">
+                {[1,2,3,4].map(i => (
+                  <div key={i} className={cn('h-1 flex-1 rounded-full transition-all duration-300', i <= pw.score ? 'opacity-100' : 'opacity-20')}
+                    style={{ background: i <= pw.score ? pw.color : 'var(--color-cz-surface3)' }} />
+                ))}
               </div>
-              
-              {formData.password && (
-                <div className="space-y-2">
-                  <div className="flex gap-1">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <div
-                        key={i}
-                        className={`h-1.5 flex-1 rounded-full transition-colors ${
-                          i < passwordStrength.score ? getStrengthColor(passwordStrength.score) : 'bg-muted'
-                        }`}
-                      />
-                    ))}
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className={`flex items-center gap-1 ${passwordStrength.checks.length ? 'text-success' : 'text-muted-foreground'}`}>
-                      {passwordStrength.checks.length ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
-                      8+ characters
-                    </div>
-                    <div className={`flex items-center gap-1 ${passwordStrength.checks.uppercase ? 'text-success' : 'text-muted-foreground'}`}>
-                      {passwordStrength.checks.uppercase ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
-                      Uppercase
-                    </div>
-                    <div className={`flex items-center gap-1 ${passwordStrength.checks.number ? 'text-success' : 'text-muted-foreground'}`}>
-                      {passwordStrength.checks.number ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
-                      Number
-                    </div>
-                    <div className={`flex items-center gap-1 ${passwordStrength.checks.special ? 'text-success' : 'text-muted-foreground'}`}>
-                      {passwordStrength.checks.special ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
-                      Special character
-                    </div>
-                  </div>
-                </div>
-              )}
+              <span className="text-xs" style={{ color: pw.color }}>{pw.label}</span>
             </div>
+          )}
+        </div>
 
-            <div className="flex items-start gap-2">
-              <Checkbox
-                id="terms"
-                checked={agreedToTerms}
-                onCheckedChange={(checked) => setAgreedToTerms(checked as boolean)}
-                disabled={isLoading}
-              />
-              <Label htmlFor="terms" className="text-sm leading-relaxed">
-                I agree to the{' '}
-                <Link href="/terms" className="text-primary hover:underline">
-                  Terms of Service
-                </Link>{' '}
-                and{' '}
-                <Link href="/privacy" className="text-primary hover:underline">
-                  Privacy Policy
-                </Link>
-              </Label>
-            </div>
-
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <>
-                  Create Account
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </>
-              )}
-            </Button>
-          </form>
-
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
-            </div>
+        <label className="flex items-start gap-3 cursor-pointer">
+          <div className={cn('w-4 h-4 mt-0.5 rounded border shrink-0 flex items-center justify-center transition-all', agreed ? 'bg-[var(--color-cz-violet)] border-[var(--color-cz-violet)]' : 'border-[var(--color-cz-border2)]')}
+            onClick={() => setAgreed(p => !p)}>
+            {agreed && <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
           </div>
+          <span className="text-xs text-[var(--color-cz-muted)] leading-relaxed">
+            I agree to the{' '}
+            <a href="#" className="text-[var(--color-cz-violet-light)] hover:underline">Terms of Service</a>
+            {' '}and{' '}
+            <a href="#" className="text-[var(--color-cz-violet-light)] hover:underline">Privacy Policy</a>
+          </span>
+        </label>
 
-          <div className="grid gap-3">
-            <Button variant="outline" type="button" disabled={isLoading}>
-              <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
-                <path
-                  fill="currentColor"
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                />
-                <path
-                  fill="currentColor"
-                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                />
-                <path
-                  fill="currentColor"
-                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                />
-                <path
-                  fill="currentColor"
-                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                />
-              </svg>
-              Google
-            </Button>
-            <Button variant="outline" type="button" disabled={isLoading}>
-              <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
-              </svg>
-              LinkedIn
-            </Button>
-          </div>
-
-          <p className="mt-6 text-center text-sm text-muted-foreground">
-            Already have an account?{' '}
-            <Link href="/login" className="font-medium text-primary hover:underline">
-              Sign in
-            </Link>
-          </p>
-        </CardContent>
-      </Card>
+        <Button type="submit" loading={loading} className="w-full justify-center" size="lg">
+          Create Account →
+        </Button>
+      </form>
     </div>
   )
 }
