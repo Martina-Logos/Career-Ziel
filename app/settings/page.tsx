@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useApp } from '@/context/AppContext'
-import AppShell from '@/components/layout/AppShell'
+import AppShell from '@/components/ui/AppShell'
 import { ROLES, INDUSTRIES } from '@/lib/utils'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'

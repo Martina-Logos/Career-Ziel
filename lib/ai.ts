@@ -1,7 +1,7 @@
 import { Question, QuestionFeedback, InterviewType, Difficulty } from '@/types'
 
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages'
-const MODEL = 'claude-sonnet-4-20250514'
+const MODEL = 'claude-sonnet-4-20260514'
 
 async function callClaude(prompt: string, systemPrompt?: string): Promise<string> {
   const messages = [{ role: 'user', content: prompt }]

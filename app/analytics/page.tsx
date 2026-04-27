@@ -1,7 +1,7 @@
 'use client'
 
 import { useApp } from '@/context/AppContext'
-import AppShell from '@/components/layout/AppShell'
+import AppShell from '@/components/ui/AppShell'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PieChart, Pie, Cell,

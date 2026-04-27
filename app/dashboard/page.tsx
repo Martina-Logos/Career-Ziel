@@ -8,9 +8,9 @@ import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 
 const MOCK_SESSIONS = [
-  { id: '1', role: 'Software Engineer', type: 'technical', score: 82, completedAt: '2025-04-23T10:00:00Z', duration: 1800 },
-  { id: '2', role: 'Product Manager', type: 'behavioral', score: 74, completedAt: '2025-04-21T14:30:00Z', duration: 1320 },
-  { id: '3', role: 'Software Engineer', type: 'general', score: 68, completedAt: '2025-04-19T09:15:00Z', duration: 900 },
+  { id: '1', role: 'Software Engineer', type: 'technical', score: 82, completedAt: '2026-04-23T10:00:00Z', duration: 1800 },
+  { id: '2', role: 'Product Manager', type: 'behavioral', score: 74, completedAt: '2026-04-21T14:30:00Z', duration: 1320 },
+  { id: '3', role: 'Software Engineer', type: 'general', score: 68, completedAt: '2026-04-19T09:15:00Z', duration: 900 },
 ]
 
 const quickActions = [

@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import AppShell from '@/components/layout/AppShell'
+import AppShell from '@/components/ui/AppShell'
 
 const FREE_FEATURES = [
   '3 text sessions per week',

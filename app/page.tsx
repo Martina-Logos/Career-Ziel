@@ -4,7 +4,7 @@ import Link from 'next/link'
 const features = [
   {
     title: 'AI Mock Interviews',
-    desc: 'Realistic questions tailored to your target role and industry, powered by Claude AI.',
+    desc: 'Realistic questions tailored to your target role and industry.',
   },
   {
     title: 'Personalized Questions',
@@ -225,7 +225,7 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="border-t border-[var(--color-cz-border)] px-8 py-8 text-center text-xs text-[var(--color-cz-muted)]">
-        <p>© 2025 CareerZiel · Built with AI · <a href="#" className="hover:text-[var(--color-cz-text)]">Privacy</a> · <a href="#" className="hover:text-[var(--color-cz-text)]">Terms</a></p>
+        <p>© 2026 CareerZiel · Built with AI · <a href="#" className="hover:text-[var(--color-cz-text)]">Privacy</a> · <a href="#" className="hover:text-[var(--color-cz-text)]">Terms</a></p>
       </footer>
     </div>
   )
