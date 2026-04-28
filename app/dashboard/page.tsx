@@ -1,294 +1,395 @@
 'use client'
+// app/dashboard/page.tsx
+// All data comes from Supabase — no mock arrays, no hardcoded names.
+// Shows empty states when user has no sessions yet.
 
 import Link from 'next/link'
-import { useApp, MOCK_USER } from '@/context/AppContext'
-import { useEffect } from 'react'
-import { formatDate, getScoreColor, getScoreLabel } from '@/lib/utils'
-import Card from '@/components/ui/Card'
-import Badge from '@/components/ui/Badge'
+import { useUser } from '@/hooks/useUser'
+import { useDashboard } from '@/hooks/useDashboard'
+import { PERSONAS } from '@/lib/personas'
 
-const MOCK_SESSIONS = [
-  { id: '1', role: 'Software Engineer', type: 'technical', score: 82, completedAt: '2026-04-23T10:00:00Z', duration: 1800 },
-  { id: '2', role: 'Product Manager', type: 'behavioral', score: 74, completedAt: '2026-04-21T14:30:00Z', duration: 1320 },
-  { id: '3', role: 'Software Engineer', type: 'general', score: 68, completedAt: '2026-04-19T09:15:00Z', duration: 900 },
-]
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-const quickActions = [
-  {
-    href: '/practice',
-    icon: (
-      <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-        <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-    ),
-    label: 'Start New Mock',
-    desc: 'Begin an AI practice session',
-    primary: true,
-  },
-  {
-    href: '/practice?tab=jd',
-    icon: (
-      <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-      </svg>
-    ),
-    label: 'Upload Job Description',
-    desc: 'Get role-specific questions',
-    primary: false,
-  },
-  {
-    href: '/analytics',
-    icon: (
-      <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-      </svg>
-    ),
-    label: 'View Progress Report',
-    desc: 'Trends, scores, skill gaps',
-    primary: false,
-  },
-]
+function scoreColor(score: number | null) {
+  if (score === null) return 'var(--color-cz-muted)'
+  if (score >= 80) return '#4A7A5A'
+  if (score >= 60) return '#A0622A'
+  return '#8B3535'
+}
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString('en-GB', {
+    day: 'numeric', month: 'short', year: 'numeric',
+  })
+}
+
+function personaName(id: string) {
+  return PERSONAS.find(p => p.id === id)?.name ?? id
+}
+
+// ── Stat card ─────────────────────────────────────────────────────────────────
+
+function StatCard({ label, value, sub, accent }: {
+  label: string; value: string | number; sub?: string; accent?: boolean
+}) {
+  return (
+    <div style={{
+      background: 'var(--color-cz-surface)',
+      border: `1px solid ${accent ? 'var(--color-cz-burg-border)' : 'var(--color-cz-border)'}`,
+      borderRadius: 12,
+      padding: '1.25rem',
+      position: 'relative',
+      overflow: 'hidden',
+    }}>
+      {accent && (
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0, height: 2,
+          background: 'linear-gradient(90deg, var(--color-cz-burg), var(--color-cz-blue-dark))',
+        }}/>
+      )}
+      <p style={{ margin: '0 0 0.35rem', fontSize: '0.775rem', color: 'var(--color-cz-muted)', fontWeight: 500 }}>
+        {label}
+      </p>
+      <p style={{
+        margin: '0 0 0.2rem',
+        fontSize: '1.75rem',
+        fontWeight: 700,
+        fontFamily: 'var(--font-syne)',
+        color: accent ? 'var(--color-cz-burg)' : 'var(--color-cz-text)',
+        lineHeight: 1,
+      }}>
+        {value}
+      </p>
+      {sub && (
+        <p style={{ margin: 0, fontSize: '0.725rem', color: 'var(--color-cz-subtle)' }}>{sub}</p>
+      )}
+    </div>
+  )
+}
+
+// ── Skeleton ──────────────────────────────────────────────────────────────────
+
+function Skeleton({ height = 80, radius = 10 }: { height?: number; radius?: number }) {
+  return (
+    <div style={{
+      height,
+      borderRadius: radius,
+      background: 'linear-gradient(90deg, var(--color-cz-surface2) 25%, var(--color-cz-surface3) 50%, var(--color-cz-surface2) 75%)',
+      backgroundSize: '200% 100%',
+      animation: 'shimmer 1.5s infinite',
+    }}/>
+  )
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const { user, setUser, sessions } = useApp()
+  const { user, loading: userLoading } = useUser()
+  const { stats, recentSessions, skillBreakdown, loading: dataLoading } = useDashboard()
 
-  // Auto-login with mock for dev
-  useEffect(() => {
-    if (!user) setUser(MOCK_USER)
-  }, [user, setUser])
+  const loading = userLoading || dataLoading
 
-  const displaySessions = sessions.length > 0
-    ? sessions.slice(0, 5)
-    : MOCK_SESSIONS
-
-  const avgScore = displaySessions.length
-    ? Math.round(displaySessions.reduce((a, s) => a + s.score, 0) / displaySessions.length)
-    : 0
+  // Greeting
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
+  const firstName = user?.full_name?.split(' ')[0] ?? user?.email?.split('@')[0] ?? ''
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
-      {/* Welcome banner */}
-      <div className="mb-8 animate-fade-up stagger-1">
-        <p className="text-xs uppercase tracking-widest mb-1" style={{ color: 'var(--color-cz-gold)' }}>
-          {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-        </p>
-        <h1 className="font-syne font-700 text-3xl tracking-tight" style={{ color: 'var(--color-cz-text)' }}>
-          Ready for your next session,{' '}
-          <span style={{ color: 'var(--color-cz-gold-light)' }}>
-            {user?.name?.split(' ')[0] || 'there'}
-          </span>
-          ?
-        </h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--color-cz-muted)' }}>
-          {user?.targetRole ? `Practicing for: ${user.targetRole}` : 'Set a target role to get personalized questions.'}
-        </p>
-      </div>
+    <div style={{ maxWidth: 900, margin: '0 auto' }}>
 
-      {/* Stats row */}
-      <div className="grid grid-cols-3 gap-4 mb-8 animate-fade-up stagger-2">
-        {[
-          { label: 'Sessions', value: user?.totalSessions ?? 12, suffix: '' },
-          { label: 'Avg. Score', value: avgScore || 74, suffix: '%' },
-          { label: 'Day Streak', value: user?.streak ?? 4, suffix: '🔥' },
-        ].map((stat, i) => (
-          <div
-            key={i}
-            className="rounded-[var(--radius-lg)] p-4 text-center"
-            style={{ background: 'var(--color-cz-surface)', border: '1px solid var(--color-cz-border)' }}
-          >
-            <p
-              className="font-syne font-700 text-2xl"
-              style={{ color: i === 1 ? 'var(--color-cz-gold-light)' : 'var(--color-cz-text)' }}
-            >
-              {stat.value}{stat.suffix}
+      {/* ── Header ── */}
+      <div style={{ marginBottom: '2rem' }}>
+        {loading ? (
+          <Skeleton height={28} radius={6} />
+        ) : (
+          <>
+            <h1 style={{
+              fontFamily: 'var(--font-syne)',
+              fontWeight: 700,
+              fontSize: '1.5rem',
+              color: 'var(--color-cz-text)',
+              margin: '0 0 0.25rem',
+            }}>
+              {greeting}{firstName ? `, ${firstName}` : ''} 👋
+            </h1>
+            <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--color-cz-muted)' }}>
+              {stats?.totalSessions === 0
+                ? "You haven't practised yet — start your first session below."
+                : `You've completed ${stats?.totalSessions} session${stats?.totalSessions === 1 ? '' : 's'}. Keep going!`
+              }
             </p>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--color-cz-muted)' }}>{stat.label}</p>
-          </div>
-        ))}
+          </>
+        )}
       </div>
 
-      {/* Quick actions */}
-      <div className="mb-8 animate-fade-up stagger-3">
-        <h2 className="font-syne font-600 text-base mb-3" style={{ color: 'var(--color-cz-text)' }}>
-          Quick Actions
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {quickActions.map((action, i) => (
-            <Link
-              key={i}
-              href={action.href}
-              className="rounded-[var(--radius-lg)] p-5 flex flex-col gap-3 transition-all duration-200 hover:-translate-y-0.5 group relative overflow-hidden"
-              style={{
-                background: action.primary ? 'var(--color-cz-gold-dim)' : 'var(--color-cz-surface)',
-                border: `1px solid ${action.primary ? 'var(--color-cz-gold-border)' : 'var(--color-cz-border)'}`,
-              }}
-            >
-              {action.primary && (
-                <div
-                  className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity"
-                  style={{ background: 'radial-gradient(ellipse at 30% 50%, var(--color-cz-gold-dim), transparent 70%)' }}
-                />
-              )}
-              <span
-                className="transition-colors"
-                style={{ color: action.primary ? 'var(--color-cz-gold-light)' : 'var(--color-cz-muted)' }}
-              >
-                {action.icon}
-              </span>
-              <div>
-                <p
-                  className="font-syne font-600 text-sm mb-0.5"
-                  style={{ color: action.primary ? 'var(--color-cz-gold-light)' : 'var(--color-cz-text)' }}
-                >
-                  {action.label}
-                </p>
-                <p className="text-xs" style={{ color: 'var(--color-cz-muted)' }}>{action.desc}</p>
-              </div>
-            </Link>
-          ))}
+      {/* ── Stats grid ── */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+        gap: '1rem',
+        marginBottom: '2rem',
+      }}>
+        {loading ? (
+          [1,2,3,4].map(i => <Skeleton key={i} height={100} radius={12} />)
+        ) : (
+          <>
+            <StatCard
+              label="Sessions completed"
+              value={stats?.totalSessions ?? 0}
+              sub="all time"
+              accent
+            />
+            <StatCard
+              label="Average score"
+              value={stats?.avgScore !== null && stats?.avgScore !== undefined ? `${stats.avgScore}%` : '—'}
+              sub="across all sessions"
+            />
+            <StatCard
+              label="Current streak"
+              value={`${stats?.currentStreak ?? 0} 🔥`}
+              sub="consecutive days"
+            />
+            <StatCard
+              label="Best score"
+              value={stats?.bestScore !== null && stats?.bestScore !== undefined ? `${stats.bestScore}%` : '—'}
+              sub="personal best"
+            />
+          </>
+        )}
+      </div>
+
+      {/* ── Quick action ── */}
+      <div style={{
+        background: 'var(--color-cz-burg)',
+        borderRadius: 12,
+        padding: '1.5rem',
+        marginBottom: '2rem',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '1rem',
+        flexWrap: 'wrap',
+      }}>
+        <div>
+          <p style={{ margin: '0 0 0.25rem', fontFamily: 'var(--font-syne)', fontWeight: 700, fontSize: '1.05rem', color: 'var(--color-cz-bg)' }}>
+            Ready to practise?
+          </p>
+          <p style={{ margin: 0, fontSize: '0.825rem', color: 'rgba(233,226,218,0.75)' }}>
+            {user?.target_role
+              ? `Pick a persona and start a ${user.target_role} session`
+              : 'Choose a role and persona to get started'}
+          </p>
         </div>
+        <Link href="/practice" style={{
+          display: 'inline-block',
+          padding: '0.7rem 1.5rem',
+          borderRadius: 8,
+          background: 'var(--color-cz-bg)',
+          color: 'var(--color-cz-burg)',
+          fontFamily: 'var(--font-syne)',
+          fontWeight: 700,
+          fontSize: '0.875rem',
+          textDecoration: 'none',
+          whiteSpace: 'nowrap',
+        }}>
+          Start session →
+        </Link>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-up stagger-4">
-        {/* Recent sessions */}
-        <div className="lg:col-span-2">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-syne font-600 text-base" style={{ color: 'var(--color-cz-text)' }}>Recent Sessions</h2>
-            <Link href="/analytics" className="text-xs hover:underline" style={{ color: 'var(--color-cz-gold)' }}>
-              View all →
-            </Link>
-          </div>
-          <div
-            className="rounded-[var(--radius-lg)] overflow-hidden"
-            style={{ border: '1px solid var(--color-cz-border)', background: 'var(--color-cz-surface)' }}
-          >
-            {displaySessions.map((s, i) => (
-              <div
-                key={s.id}
-                className="flex items-center justify-between px-5 py-4 transition-colors hover:bg-[var(--color-cz-surface2)]"
-                style={{
-                  borderBottom: i < displaySessions.length - 1 ? '1px solid var(--color-cz-border)' : 'none',
-                }}
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className="w-9 h-9 rounded-[var(--radius-md)] flex items-center justify-center text-sm"
-                    style={{ background: 'var(--color-cz-surface2)', color: 'var(--color-cz-muted)' }}
-                  >
-                    {s.type === 'technical' ? '💻' : s.type === 'behavioral' ? '🗣️' : '📋'}
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium" style={{ color: 'var(--color-cz-text)' }}>{s.role}</p>
-                    <p className="text-xs" style={{ color: 'var(--color-cz-muted)' }}>
-                      {formatDate(s.completedAt)} · {Math.round(s.duration / 60)}m
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', alignItems: 'start' }}>
+
+        {/* ── Recent sessions ── */}
+        <div style={{
+          background: 'var(--color-cz-surface)',
+          border: '1px solid var(--color-cz-border)',
+          borderRadius: 12,
+          padding: '1.25rem',
+        }}>
+          <h2 style={{
+            fontFamily: 'var(--font-syne)',
+            fontWeight: 600,
+            fontSize: '0.95rem',
+            color: 'var(--color-cz-text)',
+            margin: '0 0 1rem',
+          }}>
+            Recent sessions
+          </h2>
+
+          {loading ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {[1,2,3].map(i => <Skeleton key={i} height={52} radius={8}/>)}
+            </div>
+          ) : recentSessions.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '2rem 0' }}>
+              <p style={{ fontSize: '1.5rem', margin: '0 0 0.5rem' }}>🎯</p>
+              <p style={{ margin: 0, fontSize: '0.825rem', color: 'var(--color-cz-muted)' }}>
+                No sessions yet. Complete your first interview to see it here.
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {recentSessions.map(session => (
+                <div key={session.id} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '0.75rem',
+                  borderRadius: 8,
+                  background: 'var(--color-cz-surface2)',
+                  gap: '0.75rem',
+                }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <p style={{
+                      margin: '0 0 0.15rem',
+                      fontSize: '0.825rem',
+                      fontWeight: 600,
+                      color: 'var(--color-cz-text)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {session.role}
+                    </p>
+                    <p style={{ margin: 0, fontSize: '0.7rem', color: 'var(--color-cz-muted)' }}>
+                      {personaName(session.persona_id)} · {formatDate(session.created_at)}
                     </p>
                   </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Badge variant={s.type as 'technical' | 'behavioral' | 'general'}>{s.type}</Badge>
-                  <span
-                    className="font-syne font-600 text-sm"
-                    style={{
-                      color: s.score >= 80 ? 'var(--color-cz-teal)' :
-                             s.score >= 60 ? 'var(--color-cz-gold)' :
-                             'var(--color-cz-red)',
-                    }}
-                  >
-                    {s.score}%
-                  </span>
-                </div>
-              </div>
-            ))}
-
-            {displaySessions.length === 0 && (
-              <div className="px-5 py-10 text-center">
-                <p className="text-sm" style={{ color: 'var(--color-cz-muted)' }}>No sessions yet. Start practicing!</p>
-                <Link href="/practice" className="cz-btn cz-btn-primary mt-4 text-sm">
-                  Start First Session →
-                </Link>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Right column */}
-        <div className="space-y-4">
-          {/* Streak card */}
-          <div
-            className="rounded-[var(--radius-lg)] p-5"
-            style={{ background: 'var(--color-cz-surface)', border: '1px solid var(--color-cz-border)' }}
-          >
-            <p className="text-xs uppercase tracking-wider mb-3" style={{ color: 'var(--color-cz-muted)' }}>Your Streak</p>
-            <div className="flex items-center gap-3 mb-3">
-              <span className="text-3xl">🔥</span>
-              <div>
-                <p className="font-syne font-700 text-2xl" style={{ color: 'var(--color-cz-gold-light)' }}>
-                  {user?.streak ?? 4} days
-                </p>
-                <p className="text-xs" style={{ color: 'var(--color-cz-muted)' }}>Keep it going!</p>
-              </div>
-            </div>
-            {/* Week dots */}
-            <div className="flex gap-1.5">
-              {['M','T','W','T','F','S','S'].map((d, i) => (
-                <div key={i} className="flex flex-col items-center gap-1">
-                  <div
-                    className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-medium"
-                    style={{
-                      background: i < (user?.streak ?? 4) ? 'var(--color-cz-gold-dim)' : 'var(--color-cz-surface2)',
-                      border: `1px solid ${i < (user?.streak ?? 4) ? 'var(--color-cz-gold-border)' : 'var(--color-cz-border)'}`,
-                      color: i < (user?.streak ?? 4) ? 'var(--color-cz-gold-light)' : 'var(--color-cz-subtle)',
-                    }}
-                  >
-                    {i < (user?.streak ?? 4) ? '✓' : d}
+                  <div style={{
+                    fontSize: '0.875rem',
+                    fontWeight: 700,
+                    color: scoreColor(session.overall_score),
+                    flexShrink: 0,
+                  }}>
+                    {session.overall_score !== null ? `${session.overall_score}%` : '—'}
                   </div>
                 </div>
               ))}
             </div>
-          </div>
-
-          {/* Free tier banner */}
-          {user?.tier === 'free' && (
-            <div
-              className="rounded-[var(--radius-lg)] p-5 relative overflow-hidden"
-              style={{ background: 'var(--color-cz-gold-dim)', border: '1px solid var(--color-cz-gold-border)' }}
-            >
-              <p className="font-syne font-600 text-sm mb-1" style={{ color: 'var(--color-cz-gold-light)' }}>
-                Upgrade to Pro
-              </p>
-              <p className="text-xs mb-3" style={{ color: 'var(--color-cz-muted)' }}>
-                Unlimited sessions, PDF reports & video playback.
-              </p>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium" style={{ color: 'var(--color-cz-muted)' }}>
-                  From $4.99/mo
-                </span>
-                <Link
-                  href="/pricing"
-                  className="text-xs font-syne font-600 px-3 py-1.5 rounded-[var(--radius-sm)] transition-colors"
-                  style={{ background: 'var(--color-cz-gold)', color: '#1a1910' }}
-                >
-                  Upgrade →
-                </Link>
-              </div>
-            </div>
           )}
 
-          {/* Tip of the day */}
-          <div
-            className="rounded-[var(--radius-lg)] p-5"
-            style={{ background: 'var(--color-cz-surface)', border: '1px solid var(--color-cz-border)' }}
-          >
-            <p className="text-xs uppercase tracking-wider mb-2" style={{ color: 'var(--color-cz-muted)' }}>
-              Interview Tip
-            </p>
-            <p className="text-sm leading-relaxed" style={{ color: 'var(--color-cz-text)' }}>
-              Use the STAR method for behavioral questions: <span style={{ color: 'var(--color-cz-gold)' }}>Situation, Task, Action, Result.</span>
-            </p>
-          </div>
+          {recentSessions.length > 0 && (
+            <Link href="/analytics" style={{
+              display: 'block',
+              textAlign: 'center',
+              marginTop: '0.875rem',
+              fontSize: '0.775rem',
+              color: 'var(--color-cz-burg)',
+              textDecoration: 'none',
+              fontWeight: 600,
+            }}>
+              View all in Analytics →
+            </Link>
+          )}
+        </div>
+
+        {/* ── Skill breakdown ── */}
+        <div style={{
+          background: 'var(--color-cz-surface)',
+          border: '1px solid var(--color-cz-border)',
+          borderRadius: 12,
+          padding: '1.25rem',
+        }}>
+          <h2 style={{
+            fontFamily: 'var(--font-syne)',
+            fontWeight: 600,
+            fontSize: '0.95rem',
+            color: 'var(--color-cz-text)',
+            margin: '0 0 1rem',
+          }}>
+            Score by question type
+          </h2>
+
+          {loading ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {[1,2,3].map(i => <Skeleton key={i} height={40} radius={6}/>)}
+            </div>
+          ) : skillBreakdown.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '2rem 0' }}>
+              <p style={{ fontSize: '1.5rem', margin: '0 0 0.5rem' }}>📊</p>
+              <p style={{ margin: 0, fontSize: '0.825rem', color: 'var(--color-cz-muted)' }}>
+                Complete a session to see your score breakdown by question type.
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+              {skillBreakdown.map(item => (
+                <div key={item.type}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
+                    <span style={{
+                      fontSize: '0.8rem',
+                      fontWeight: 500,
+                      color: 'var(--color-cz-text)',
+                      textTransform: 'capitalize',
+                    }}>
+                      {item.type}
+                    </span>
+                    <span style={{
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
+                      color: scoreColor(item.avgScore),
+                    }}>
+                      {item.avgScore}%
+                    </span>
+                  </div>
+                  <div style={{
+                    height: 6, borderRadius: 3,
+                    background: 'var(--color-cz-surface3)',
+                    overflow: 'hidden',
+                  }}>
+                    <div style={{
+                      height: '100%',
+                      width: `${item.avgScore}%`,
+                      borderRadius: 3,
+                      background: scoreColor(item.avgScore),
+                      transition: 'width 0.5s ease',
+                    }}/>
+                  </div>
+                  <p style={{ margin: '0.2rem 0 0', fontSize: '0.68rem', color: 'var(--color-cz-subtle)' }}>
+                    {item.count} answer{item.count === 1 ? '' : 's'}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* ── Profile completion prompt (if missing target_role) ── */}
+      {!loading && !user?.target_role && (
+        <div style={{
+          marginTop: '1.5rem',
+          padding: '1rem 1.25rem',
+          borderRadius: 10,
+          background: 'var(--color-cz-blue-dim)',
+          border: '1px solid var(--color-cz-blue-border)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '1rem',
+          flexWrap: 'wrap',
+        }}>
+          <div>
+            <p style={{ margin: '0 0 0.2rem', fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-cz-text)' }}>
+              Complete your profile
+            </p>
+            <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--color-cz-muted)' }}>
+              Set your target role so we can personalise your interview questions.
+            </p>
+          </div>
+          <Link href="/profile-setup" style={{
+            padding: '0.55rem 1.1rem',
+            borderRadius: 7,
+            background: 'var(--color-cz-burg)',
+            color: 'var(--color-cz-bg)',
+            fontSize: '0.825rem',
+            fontWeight: 600,
+            textDecoration: 'none',
+            whiteSpace: 'nowrap',
+          }}>
+            Set up profile →
+          </Link>
+        </div>
+      )}
     </div>
   )
 }
