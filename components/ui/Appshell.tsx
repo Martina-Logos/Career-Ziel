@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useApp } from '@/context/AppContext'
 import { cn } from '@/lib/utils'
 import { ReactNode } from 'react'
+import { signOut } from '@/app/auth/actions'
 
 interface NavItem {
   href: string
@@ -93,6 +94,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
               </Link>
             )
           })}
+          <form action={signOut}>
+            <button type="submit">Sign out</button>
+          </form>
         </nav>
 
         {/* Pro upgrade banner */}

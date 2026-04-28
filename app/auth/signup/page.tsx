@@ -1,116 +1,332 @@
 'use client'
+// app/auth/signup/page.tsx
 
 import { useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useApp, MOCK_USER } from '@/context/AppContext'
-import Input from '@/components/ui/Input'
-import Button from '@/components/ui/Button'
-import { cn } from '@/lib/utils'
+import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'
 
-function passwordStrength(p: string): { score: number; label: string; color: string } {
-  let score = 0
-  if (p.length >= 8) score++
-  if (/[A-Z]/.test(p)) score++
-  if (/[0-9]/.test(p)) score++
-  if (/[^A-Za-z0-9]/.test(p)) score++
-  const labels = ['', 'Weak', 'Fair', 'Good', 'Strong']
-  const colors = ['', 'var(--color-cz-red)', 'var(--color-cz-amber)', 'var(--color-cz-teal)', 'var(--color-cz-teal)']
-  return { score, label: labels[score] || '', color: colors[score] || '' }
-}
+type Step = 'form' | 'verify'
 
 export default function SignupPage() {
-  const { setUser } = useApp()
   const router = useRouter()
-  const [form, setForm] = useState({ name: '', email: '', password: '' })
-  const [agreed, setAgreed] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [step, setStep] = useState<Step>('form')
+  const [fullName, setFullName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
+  const [loading, setLoading] = useState(false)
 
-  const pw = passwordStrength(form.password)
-
-  function update(field: string) {
-    return (e: React.ChangeEvent<HTMLInputElement>) => setForm(p => ({ ...p, [field]: e.target.value }))
-  }
+  // Password strength
+  const strength = (() => {
+    let s = 0
+    if (password.length >= 8) s++
+    if (/[A-Z]/.test(password)) s++
+    if (/[0-9]/.test(password)) s++
+    if (/[^A-Za-z0-9]/.test(password)) s++
+    return s
+  })()
+  const strengthLabel = ['', 'Weak', 'Fair', 'Good', 'Strong'][strength]
+  const strengthColor = ['', '#8B3535', '#A0622A', '#4A7A5A', '#2A6A4A'][strength]
 
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.name || !form.email || !form.password) { setError('Please fill in all fields.'); return }
-    if (!agreed) { setError('Please agree to the terms.'); return }
-    if (pw.score < 2) { setError('Please choose a stronger password.'); return }
-    setLoading(true)
     setError('')
-    await new Promise(r => setTimeout(r, 900))
-    setUser({ ...MOCK_USER, name: form.name, email: form.email })
-    router.push('/onboarding')
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.')
+      return
+    }
+
+    setLoading(true)
+    const supabase = createClient()
+
+    const { error: signUpError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { full_name: fullName },
+        // After clicking the email link, user lands here:
+        emailRedirectTo: `${location.origin}/auth/callback`,
+      },
+    })
+
+    setLoading(false)
+
+    if (signUpError) {
+      setError(signUpError.message)
+      return
+    }
+
+    // Move to verify step — Supabase has sent the email
+    setStep('verify')
   }
 
-  return (
-    <div className="animate-fade-up">
-      <div className="mb-8">
-        <h1 className="font-syne font-700 text-2xl tracking-tight mb-1.5">Create your account</h1>
-        <p className="text-sm text-[var(--color-cz-muted)]">
-          Already have one?{' '}
-          <Link href="/auth/login" className="text-[var(--color-cz-violet-light)] hover:underline">Sign in</Link>
-        </p>
-      </div>
+  async function handleResend() {
+    setError('')
+    const supabase = createClient()
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+      options: { emailRedirectTo: `${location.origin}/auth/callback` },
+    })
+    if (error) setError(error.message)
+    else setError('') // clear any previous error; show nothing — success is implicit
+  }
 
-      <form onSubmit={handleSignup} className="space-y-4">
-        {error && (
-          <div className="px-4 py-3 rounded-[var(--radius-md)] bg-[var(--color-cz-red-dim)] border border-[var(--color-cz-red)]/20 text-sm text-[var(--color-cz-red)]">
-            {error}
+  // ── Verify email screen ───────────────────────────────────────────────────
+  if (step === 'verify') {
+    return (
+      <div style={styles.page}>
+        <div style={styles.card}>
+          {/* Icon */}
+          <div style={{
+            width: 56, height: 56, borderRadius: '50%',
+            background: 'var(--color-cz-burg-dim)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            margin: '0 auto 1.25rem',
+            fontSize: '1.5rem',
+          }}>✉️</div>
+
+          <h1 style={styles.heading}>Check your email</h1>
+          <p style={styles.sub}>
+            We sent a verification link to{' '}
+            <strong style={{ color: 'var(--color-cz-text)' }}>{email}</strong>.
+            Click the link in that email to activate your account.
+          </p>
+
+          <div style={{
+            padding: '0.875rem 1rem',
+            borderRadius: 8,
+            background: 'var(--color-cz-surface2)',
+            border: '1px solid var(--color-cz-border2)',
+            fontSize: '0.825rem',
+            color: 'var(--color-cz-muted)',
+            marginBottom: '1.25rem',
+          }}>
+            <strong style={{ color: 'var(--color-cz-text)' }}>Didn't get it?</strong>
+            {' '}Check your spam folder, or wait 60 seconds and resend below.
           </div>
-        )}
 
-        <Input label="Full Name" placeholder="Alex Mukasa" value={form.name} onChange={update('name')} autoComplete="name" />
-        <Input label="Email" type="email" placeholder="you@example.com" value={form.email} onChange={update('email')} autoComplete="email" />
+          {error && <p style={styles.errorText}>{error}</p>}
 
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium text-[var(--color-cz-muted)] uppercase tracking-wider">Password</label>
-          <div className="relative">
-            <input
-              type={showPassword ? 'text' : 'password'}
-              placeholder="Create a strong password"
-              value={form.password}
-              onChange={update('password')}
-              autoComplete="new-password"
-              className="cz-input pr-11"
-            />
-            <button type="button" onClick={() => setShowPassword(p => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-cz-muted)] hover:text-[var(--color-cz-text)]">
-              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+          <button
+            onClick={handleResend}
+            style={{ ...styles.btnSecondary, width: '100%', marginBottom: '0.75rem' }}
+          >
+            Resend verification email
+          </button>
+
+          <p style={{ textAlign: 'center', fontSize: '0.825rem', color: 'var(--color-cz-muted)' }}>
+            Wrong email?{' '}
+            <button
+              onClick={() => setStep('form')}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-cz-burg)', fontWeight: 600, padding: 0 }}
+            >
+              Go back
             </button>
-          </div>
-          {form.password && (
-            <div className="flex items-center gap-2 mt-1">
-              <div className="flex gap-1 flex-1">
-                {[1,2,3,4].map(i => (
-                  <div key={i} className={cn('h-1 flex-1 rounded-full transition-all duration-300', i <= pw.score ? 'opacity-100' : 'opacity-20')}
-                    style={{ background: i <= pw.score ? pw.color : 'var(--color-cz-surface3)' }} />
-                ))}
-              </div>
-              <span className="text-xs" style={{ color: pw.color }}>{pw.label}</span>
-            </div>
-          )}
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Signup form ───────────────────────────────────────────────────────────
+  return (
+    <div style={styles.page}>
+      <div style={styles.card}>
+        <div style={{ marginBottom: '1.5rem' }}>
+          <h1 style={styles.heading}>Create your account</h1>
+          <p style={styles.sub}>Start practising interviews with AI today.</p>
         </div>
 
-        <label className="flex items-start gap-3 cursor-pointer">
-          <div className={cn('w-4 h-4 mt-0.5 rounded border shrink-0 flex items-center justify-center transition-all', agreed ? 'bg-[var(--color-cz-violet)] border-[var(--color-cz-violet)]' : 'border-[var(--color-cz-border2)]')}
-            onClick={() => setAgreed(p => !p)}>
-            {agreed && <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+        <form onSubmit={handleSignup} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {/* Full name */}
+          <div>
+            <label style={styles.label}>Full name</label>
+            <input
+              type="text"
+              placeholder="Your name"
+              value={fullName}
+              onChange={e => setFullName(e.target.value)}
+              required
+              style={styles.input}
+            />
           </div>
-          <span className="text-xs text-[var(--color-cz-muted)] leading-relaxed">
-            I agree to the{' '}
-            <a href="#" className="text-[var(--color-cz-violet-light)] hover:underline">Terms of Service</a>
-            {' '}and{' '}
-            <a href="#" className="text-[var(--color-cz-violet-light)] hover:underline">Privacy Policy</a>
-          </span>
-        </label>
 
-        <Button type="submit" loading={loading} className="w-full justify-center" size="lg">
-          Create Account →
-        </Button>
-      </form>
+          {/* Email */}
+          <div>
+            <label style={styles.label}>Email address</label>
+            <input
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              required
+              style={styles.input}
+            />
+          </div>
+
+          {/* Password */}
+          <div>
+            <label style={styles.label}>Password</label>
+            <input
+              type="password"
+              placeholder="At least 8 characters"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              required
+              style={styles.input}
+            />
+            {/* Strength meter */}
+            {password.length > 0 && (
+              <div style={{ marginTop: '0.4rem' }}>
+                <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+                  {[1,2,3,4].map(i => (
+                    <div key={i} style={{
+                      flex: 1, height: 3, borderRadius: 2,
+                      background: i <= strength ? strengthColor : 'var(--color-cz-border2)',
+                      transition: 'background 0.2s',
+                    }}/>
+                  ))}
+                </div>
+                <span style={{ fontSize: '0.75rem', color: strengthColor }}>{strengthLabel}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Confirm password */}
+          <div>
+            <label style={styles.label}>Confirm password</label>
+            <input
+              type="password"
+              placeholder="Repeat your password"
+              value={confirmPassword}
+              onChange={e => setConfirmPassword(e.target.value)}
+              required
+              style={{
+                ...styles.input,
+                borderColor: confirmPassword && confirmPassword !== password
+                  ? 'var(--color-cz-red)'
+                  : undefined,
+              }}
+            />
+            {confirmPassword && confirmPassword !== password && (
+              <p style={{ fontSize: '0.75rem', color: 'var(--color-cz-red)', marginTop: 4 }}>
+                Passwords do not match
+              </p>
+            )}
+          </div>
+
+          {error && <p style={styles.errorText}>{error}</p>}
+
+          <button
+            type="submit"
+            disabled={loading}
+            style={{ ...styles.btnPrimary, opacity: loading ? 0.6 : 1 }}
+          >
+            {loading ? 'Creating account…' : 'Create account'}
+          </button>
+        </form>
+
+        <p style={{ textAlign: 'center', fontSize: '0.825rem', color: 'var(--color-cz-muted)', marginTop: '1.25rem' }}>
+          Already have an account?{' '}
+          <Link href="/auth/login" style={{ color: 'var(--color-cz-burg)', fontWeight: 600, textDecoration: 'none' }}>
+            Sign in
+          </Link>
+        </p>
+
+        <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--color-cz-subtle)', marginTop: '1rem' }}>
+          By signing up you agree to our Terms of Service and Privacy Policy.
+        </p>
+      </div>
     </div>
   )
+}
+
+const styles = {
+  page: {
+    minHeight: '100vh',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '2rem 1rem',
+    background: 'var(--color-cz-bg)',
+  } as React.CSSProperties,
+  card: {
+    width: '100%',
+    maxWidth: 420,
+    background: 'var(--color-cz-surface)',
+    border: '1px solid var(--color-cz-border2)',
+    borderRadius: 14,
+    padding: '2rem',
+  } as React.CSSProperties,
+  heading: {
+    fontFamily: 'var(--font-syne)',
+    fontWeight: 700,
+    fontSize: '1.4rem',
+    color: 'var(--color-cz-text)',
+    margin: '0 0 0.25rem',
+    textAlign: 'center',
+  } as React.CSSProperties,
+  sub: {
+    fontSize: '0.875rem',
+    color: 'var(--color-cz-muted)',
+    margin: 0,
+    textAlign: 'center',
+  } as React.CSSProperties,
+  label: {
+    display: 'block',
+    fontSize: '0.825rem',
+    fontWeight: 600,
+    color: 'var(--color-cz-text)',
+    marginBottom: '0.35rem',
+  } as React.CSSProperties,
+  input: {
+    width: '100%',
+    padding: '0.7rem 0.9rem',
+    borderRadius: 8,
+    border: '1px solid var(--color-cz-border2)',
+    background: 'var(--color-cz-surface2)',
+    color: 'var(--color-cz-text)',
+    fontSize: '0.9rem',
+    outline: 'none',
+    boxSizing: 'border-box',
+  } as React.CSSProperties,
+  btnPrimary: {
+    width: '100%',
+    padding: '0.75rem',
+    borderRadius: 8,
+    border: 'none',
+    background: 'var(--color-cz-burg)',
+    color: 'var(--color-cz-bg)',
+    fontFamily: 'var(--font-syne)',
+    fontWeight: 600,
+    fontSize: '0.9rem',
+    cursor: 'pointer',
+  } as React.CSSProperties,
+  btnSecondary: {
+    padding: '0.7rem',
+    borderRadius: 8,
+    border: '1px solid var(--color-cz-border2)',
+    background: 'var(--color-cz-surface)',
+    color: 'var(--color-cz-text)',
+    fontFamily: 'var(--font-syne)',
+    fontWeight: 600,
+    fontSize: '0.875rem',
+    cursor: 'pointer',
+  } as React.CSSProperties,
+  errorText: {
+    fontSize: '0.825rem',
+    color: 'var(--color-cz-red)',
+    margin: 0,
+    padding: '0.6rem 0.75rem',
+    background: 'var(--color-cz-red-dim)',
+    borderRadius: 6,
+  } as React.CSSProperties,
 }
