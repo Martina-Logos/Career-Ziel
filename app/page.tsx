@@ -3,26 +3,32 @@ import Link from 'next/link'
 
 const features = [
   {
+    icon: 'AI',
     title: 'AI Mock Interviews',
     desc: 'Realistic questions tailored to your target role and industry.',
   },
   {
+    icon: 'JD',
     title: 'Personalized Questions',
     desc: 'Paste a job description and get questions crafted from the actual requirements.',
   },
   {
+    icon: 'AN',
     title: 'Deep Analytics',
     desc: 'Track clarity, confidence, relevance and technical accuracy across sessions.',
   },
   {
+    icon: 'UP',
     title: 'Progress Tracking',
     desc: 'See your improvement over time with score trends and skill mastery bars.',
   },
   {
+    icon: 'VO',
     title: 'Voice Input',
     desc: 'Answer questions by speaking naturally — just like a real interview.',
   },
   {
+    icon: 'FB',
     title: 'Instant Feedback',
     desc: 'Get detailed AI feedback on every answer with actionable suggestions.',
   },

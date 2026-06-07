@@ -8,24 +8,28 @@ const slides = [
   {
     title: 'Practice with AI mocks',
     desc: 'Answer real interview questions tailored to your role and industry. Text or voice — your choice.',
+    emoji: 'AI',
     color: 'var(--color-cz-gold)',
     bg: 'var(--color-cz-gold-dim)',
   },
   {
     title: 'Get instant feedback',
     desc: 'Every answer is scored on clarity, confidence, relevance and accuracy. Know exactly where you stand.',
+    emoji: '99',
     color: 'var(--color-cz-teal)',
     bg: 'var(--color-cz-teal-dim)',
   },
   {
     title: 'Track your progress',
     desc: 'Session scores, skill heatmaps, and trend charts show your improvement over time.',
+    emoji: 'UP',
     color: '#7aad8a',
     bg: 'rgba(122, 173, 138, 0.12)',
   },
   {
     title: 'Personalize every session',
     desc: 'Paste a job description and get questions crafted directly from the role requirements.',
+    emoji: 'JD',
     color: 'var(--color-cz-gold-light)',
     bg: 'var(--color-cz-gold-dim)',
   },

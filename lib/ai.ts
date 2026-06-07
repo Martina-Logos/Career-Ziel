@@ -1,16 +1,15 @@
 // lib/ai.ts
-// Persona-aware AI service.
-// All functions call the Anthropic API via your ANTHROPIC_API_KEY env var.
-// This runs in Server Actions / Route Handlers — never expose to the client.
+// Persona-aware AI service — powered by OpenAI.
+// Runs in Server Actions only — never import this in a Client Component.
 
-import Anthropic from '@anthropic-ai/sdk'
-import { getPersona, type Persona } from '@/lib/personas'
+import OpenAI from 'openai'
+import { getPersona } from '@/lib/personas'
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
 })
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface GeneratedQuestion {
   index: number
@@ -20,9 +19,9 @@ export interface GeneratedQuestion {
 }
 
 export interface EvaluationResult {
-  score: number              // 0–100
-  feedback: string           // 2–3 sentence assessment
-  improvementTip: string     // 1 actionable sentence
+  score: number
+  feedback: string
+  improvementTip: string
   rubricBreakdown: {
     clarity: number
     depth: number
@@ -41,7 +40,22 @@ export interface SessionConfig {
   questionCount?: number
 }
 
-// ─── Question generation ─────────────────────────────────────────────────────
+// ─── Helper ───────────────────────────────────────────────────────────────────
+
+async function chat(system: string, user: string, maxTokens = 1500): Promise<string> {
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',   // fast + cheap; swap to 'gpt-4o' for higher quality
+    max_tokens: maxTokens,
+    temperature: 0.7,
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user',   content: user },
+    ],
+  })
+  return response.choices[0]?.message?.content ?? ''
+}
+
+// ─── Question generation ──────────────────────────────────────────────────────
 
 export async function generateQuestions(config: SessionConfig): Promise<GeneratedQuestion[]> {
   const persona = getPersona(config.personaId)
@@ -68,14 +82,7 @@ Format exactly:
   }
 ]`
 
-  const response = await anthropic.messages.create({
-    model: 'claude-opus-4-5',
-    max_tokens: 1500,
-    system: persona.systemPrompt,
-    messages: [{ role: 'user', content: prompt }],
-  })
-
-  const raw = response.content[0].type === 'text' ? response.content[0].text : ''
+  const raw = await chat(persona.systemPrompt, prompt, 1500)
 
   try {
     const cleaned = raw.replace(/```json|```/g, '').trim()
@@ -85,7 +92,7 @@ Format exactly:
   }
 }
 
-// ─── Answer evaluation ───────────────────────────────────────────────────────
+// ─── Answer evaluation ────────────────────────────────────────────────────────
 
 export async function evaluateAnswer(params: {
   personaId: string
@@ -114,16 +121,16 @@ ${timeNote}
 
 Score this answer using these exact rubric weights (weights sum to 100):
 - Clarity: ${rubric.clarity} points
-- Depth: ${rubric.depth} points  
+- Depth: ${rubric.depth} points
 - Conciseness: ${rubric.conciseness} points
 - Cultural fit signals: ${rubric.culturalFit} points
 - STAR method structure: ${rubric.starMethod} points
 
 Return ONLY a valid JSON object. No markdown, no explanation, no code fences:
 {
-  "score": <0-100 integer, weighted average>,
+  "score": <0-100 integer>,
   "feedback": "<2-3 sentences assessing the answer>",
-  "improvementTip": "<1 specific, actionable sentence the candidate can apply next time>",
+  "improvementTip": "<1 specific actionable sentence>",
   "rubricBreakdown": {
     "clarity": <0-${rubric.clarity}>,
     "depth": <0-${rubric.depth}>,
@@ -133,24 +140,17 @@ Return ONLY a valid JSON object. No markdown, no explanation, no code fences:
   }
 }`
 
-  const response = await anthropic.messages.create({
-    model: 'claude-opus-4-5',
-    max_tokens: 600,
-    system: persona.systemPrompt,
-    messages: [{ role: 'user', content: prompt }],
-  })
-
-  const raw = response.content[0].type === 'text' ? response.content[0].text : ''
+  const raw = await chat(persona.systemPrompt, prompt, 600)
 
   try {
     const cleaned = raw.replace(/```json|```/g, '').trim()
     return JSON.parse(cleaned) as EvaluationResult
   } catch {
-    throw new Error(`Failed to parse evaluation from AI response: ${raw.slice(0, 200)}`)
+    throw new Error(`Failed to parse evaluation: ${raw.slice(0, 200)}`)
   }
 }
 
-// ─── JD skill extractor (Pro feature) ────────────────────────────────────────
+// ─── JD skill extractor (Pro) ─────────────────────────────────────────────────
 
 export async function extractJobSkills(jobDescription: string): Promise<{
   role: string
@@ -166,21 +166,15 @@ Return ONLY valid JSON. No markdown:
 {
   "role": "<inferred role title>",
   "skills": ["<skill 1>", "<skill 2>", ...],
-  "questionFocus": ["<area to focus interview questions on>", ...]
+  "questionFocus": ["<area to focus on>", ...]
 }`
 
-  const response = await anthropic.messages.create({
-    model: 'claude-opus-4-5',
-    max_tokens: 500,
-    messages: [{ role: 'user', content: prompt }],
-  })
-
-  const raw = response.content[0].type === 'text' ? response.content[0].text : ''
+  const raw = await chat('You are a job description analyser. Return only valid JSON.', prompt, 500)
   const cleaned = raw.replace(/```json|```/g, '').trim()
   return JSON.parse(cleaned)
 }
 
-// ─── Session summary ─────────────────────────────────────────────────────────
+// ─── Session summary ──────────────────────────────────────────────────────────
 
 export async function generateSessionSummary(params: {
   personaId: string
@@ -211,19 +205,13 @@ ${answersText}
 
 Return ONLY valid JSON:
 {
-  "headline": "<one sentence overall assessment, e.g. 'Strong technical answers, but conciseness needs work'>",
+  "headline": "<one sentence overall assessment>",
   "strengths": ["<strength 1>", "<strength 2>", "<strength 3>"],
   "improvements": ["<improvement 1>", "<improvement 2>", "<improvement 3>"],
-  "nextSteps": "<1-2 sentences recommending what to practise next>"
+  "nextSteps": "<1-2 sentences on what to practise next>"
 }`
 
-  const response = await anthropic.messages.create({
-    model: 'claude-opus-4-5',
-    max_tokens: 600,
-    messages: [{ role: 'user', content: prompt }],
-  })
-
-  const raw = response.content[0].type === 'text' ? response.content[0].text : ''
+  const raw = await chat('You are an interview coach. Return only valid JSON.', prompt, 600)
   const cleaned = raw.replace(/```json|```/g, '').trim()
   return JSON.parse(cleaned)
 }

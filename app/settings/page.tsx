@@ -1,213 +1,289 @@
 'use client'
+// app/settings/page.tsx — all real Supabase data, no mock context
 
-import { useState } from 'react'
-import { useApp } from '@/context/AppContext'
-import AppShell from '@/components/ui/AppShell'
-import { ROLES, INDUSTRIES } from '@/lib/utils'
-import Button from '@/components/ui/Button'
-import Input from '@/components/ui/Input'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import type { Database } from '@/lib/supabase/types'
 
-type Tab = 'profile' | 'notifications' | 'privacy' | 'audio'
+type UserRow = Database['public']['Tables']['users']['Row']
+type Tab = 'profile' | 'notifications' | 'audio' | 'privacy'
+
+const ROLES = [
+  'Software Engineer', 'Product Manager', 'Data Scientist', 'Data Analyst',
+  'UX / Product Designer', 'Marketing Manager', 'Business Analyst',
+  'DevOps / Platform Engineer', 'Engineering Manager', 'Other',
+]
+const INDUSTRIES = [
+  'Technology', 'Finance & Banking', 'Healthcare', 'E-commerce & Retail',
+  'Consulting', 'Media & Entertainment', 'Education', 'Government & Non-profit', 'Other',
+]
+const EXPERIENCE_LEVELS = [
+  { value: 'junior', label: 'Junior (0–2 years)' },
+  { value: 'mid',    label: 'Mid-level (2–5 years)' },
+  { value: 'senior', label: 'Senior (5–10 years)' },
+  { value: 'lead',   label: 'Lead / Staff (10+ years)' },
+]
+
+const TABS: { id: Tab; label: string; icon: string }[] = [
+  { id: 'profile',       label: 'Profile',        icon: '👤' },
+  { id: 'notifications', label: 'Notifications',  icon: '🔔' },
+  { id: 'audio',         label: 'Audio & Video',  icon: '🎤' },
+  { id: 'privacy',       label: 'Privacy',        icon: '🔒' },
+]
 
 export default function SettingsPage() {
-  const { user, setUser } = useApp()
-  const [tab, setTab] = useState<Tab>('profile')
-  const [saved, setSaved] = useState(false)
-  const [form, setForm] = useState({
-    name: user?.name || '',
-    email: user?.email || '',
-    targetRole: user?.targetRole || '',
-    industry: user?.industry || '',
-  })
-  const [notifs, setNotifs] = useState({ email: true, push: false, weekly: true })
-  const [language, setLanguage] = useState('English')
+  const router = useRouter()
+  const [tab,     setTab]     = useState<Tab>('profile')
+  const [user,    setUser]    = useState<UserRow | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving,  setSaving]  = useState(false)
+  const [saved,   setSaved]   = useState(false)
+  const [error,   setError]   = useState('')
 
-  function update(field: string, value: string) {
-    setForm(p => ({ ...p, [field]: value }))
-  }
+  // Profile form state
+  const [fullName,   setFullName]   = useState('')
+  const [targetRole, setTargetRole] = useState('')
+  const [expLevel,   setExpLevel]   = useState('mid')
+  const [industry,   setIndustry]   = useState('')
+  const [bio,        setBio]        = useState('')
+
+  // Notification prefs (stored locally for now — extend to DB later)
+  const [notifs, setNotifs] = useState({ email: true, weekly: true, push: false })
+
+  useEffect(() => {
+    async function load() {
+      const supabase = createClient()
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      if (!authUser) { router.push('/auth/login'); return }
+
+      const { data } = await supabase.from('users').select('*').eq('id', authUser.id).single()
+      if (data) {
+        setUser(data)
+        setFullName(data.full_name ?? '')
+        setTargetRole(data.target_role ?? '')
+        setExpLevel(data.experience_level ?? 'mid')
+        setIndustry(data.industry ?? '')
+        setBio(data.bio ?? '')
+      }
+      setLoading(false)
+    }
+    load()
+  }, [router])
 
   async function handleSave() {
-    if (user) {
-      setUser({ ...user, name: form.name, targetRole: form.targetRole, industry: form.industry })
-    }
+    if (!user) return
+    setSaving(true)
+    setError('')
+
+    const supabase = createClient()
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({
+        full_name:        fullName.trim() || null,
+        target_role:      targetRole || null,
+        experience_level: expLevel,
+        industry:         industry || null,
+        bio:              bio.trim() || null,
+        updated_at:       new Date().toISOString(),
+      })
+      .eq('id', user.id)
+
+    setSaving(false)
+    if (updateError) { setError(updateError.message); return }
     setSaved(true)
     setTimeout(() => setSaved(false), 2500)
+    // Refresh local state
+    setUser(prev => prev ? { ...prev, full_name: fullName, target_role: targetRole, experience_level: expLevel, industry, bio } : prev)
   }
 
-  const tabs: { id: Tab; label: string; icon: string }[] = [
-    { id: 'profile', label: 'Profile', icon: '👤' },
-    { id: 'notifications', label: 'Notifications', icon: '🔔' },
-    { id: 'audio', label: 'Audio & Video', icon: '🎤' },
-    { id: 'privacy', label: 'Privacy', icon: '🔒' },
-  ]
+  async function handleDeleteAccount() {
+    if (!confirm('Are you sure? This permanently deletes your account and all session data. This cannot be undone.')) return
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    router.push('/')
+  }
+
+  const initials = (user?.full_name ?? user?.email ?? '??').split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
+
+  function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+    return (
+      <button onClick={onToggle} style={{ width: 44, height: 24, borderRadius: 12, background: on ? 'var(--color-cz-burg)' : 'var(--color-cz-surface3)', border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}>
+        <span style={{ position: 'absolute', top: 2, left: on ? 22 : 2, width: 20, height: 20, borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }}/>
+      </button>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div style={{ maxWidth: 800, margin: '0 auto', padding: '2rem' }}>
+        <div style={{ height: 28, width: 120, borderRadius: 6, background: 'var(--color-cz-surface2)', marginBottom: '2rem' }}/>
+        <div style={{ height: 400, borderRadius: 12, background: 'var(--color-cz-surface2)' }}/>
+      </div>
+    )
+  }
 
   return (
-    <AppShell>
-      <div className="p-8 max-w-4xl mx-auto">
-        <div className="mb-8">
-          <h1 className="font-syne font-700 text-2xl tracking-tight" style={{ color: 'var(--color-cz-text)' }}>Settings</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--color-cz-muted)' }}>Manage your account and preferences</p>
-        </div>
+    <div style={{ maxWidth: 800, margin: '0 auto' }}>
+      <div style={{ marginBottom: '2rem' }}>
+        <h1 style={{ fontFamily: 'var(--font-syne)', fontWeight: 700, fontSize: '1.5rem', color: 'var(--color-cz-text)', margin: '0 0 0.25rem' }}>Settings</h1>
+        <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--color-cz-muted)' }}>Manage your account and preferences</p>
+      </div>
 
-        <div className="flex gap-6">
-          {/* Tab nav */}
-          <nav className="w-44 shrink-0 space-y-1">
-            {tabs.map(t => (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-[var(--radius-md)] text-sm text-left transition-all"
-                style={{
-                  background: tab === t.id ? 'var(--color-cz-gold-dim)' : 'transparent',
-                  color: tab === t.id ? 'var(--color-cz-gold-light)' : 'var(--color-cz-muted)',
-                  border: tab === t.id ? '1px solid var(--color-cz-gold-border)' : '1px solid transparent',
-                }}
-              >
-                <span className="text-base">{t.icon}</span>
-                {t.label}
-              </button>
-            ))}
-          </nav>
+      <div style={{ display: 'flex', gap: '1.5rem' }}>
+        {/* Tab nav */}
+        <nav style={{ width: 160, flexShrink: 0 }}>
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)} style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: '0.6rem',
+              padding: '0.6rem 0.75rem', borderRadius: 8, marginBottom: '0.15rem',
+              border: tab === t.id ? '1px solid var(--color-cz-burg-border)' : '1px solid transparent',
+              background: tab === t.id ? 'var(--color-cz-burg-dim)' : 'transparent',
+              color: tab === t.id ? 'var(--color-cz-burg)' : 'var(--color-cz-muted)',
+              fontSize: '0.875rem', fontWeight: tab === t.id ? 600 : 400,
+              cursor: 'pointer', textAlign: 'left',
+            }}>
+              <span>{t.icon}</span> {t.label}
+            </button>
+          ))}
+        </nav>
 
-          {/* Content */}
-          <div className="flex-1">
-            {/* Profile tab */}
-            {tab === 'profile' && (
-              <div
-                className="rounded-[var(--radius-lg)] p-6 space-y-5"
-                style={{ background: 'var(--color-cz-surface)', border: '1px solid var(--color-cz-border)' }}
-              >
-                <h2 className="font-syne font-600 text-base" style={{ color: 'var(--color-cz-text)' }}>Profile Settings</h2>
+        {/* Content */}
+        <div style={{ flex: 1 }}>
 
-                {/* Avatar */}
-                <div className="flex items-center gap-4">
-                  <div
-                    className="w-16 h-16 rounded-full flex items-center justify-center text-xl font-syne font-600"
-                    style={{ background: 'var(--color-cz-gold-dim)', color: 'var(--color-cz-gold-light)', border: '2px solid var(--color-cz-gold-border)' }}
-                  >
-                    {user?.name?.slice(0, 2).toUpperCase() || 'AM'}
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium" style={{ color: 'var(--color-cz-text)' }}>{user?.name}</p>
-                    <button className="text-xs mt-1" style={{ color: 'var(--color-cz-gold)' }}>Upload photo</button>
-                  </div>
+          {/* ── Profile ── */}
+          {tab === 'profile' && (
+            <div style={card}>
+              <h2 style={cardTitle}>Profile settings</h2>
+
+              {/* Avatar */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+                <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--color-cz-burg)', color: 'var(--color-cz-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-syne)', fontWeight: 700, fontSize: '1.1rem' }}>
+                  {initials}
                 </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <Input label="Full Name" value={form.name} onChange={e => update('name', e.target.value)} />
-                  <Input label="Email" type="email" value={form.email} onChange={e => update('email', e.target.value)} />
+                <div>
+                  <p style={{ margin: '0 0 0.15rem', fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-cz-text)' }}>{user?.full_name ?? user?.email}</p>
+                  <p style={{ margin: 0, fontSize: '0.775rem', color: 'var(--color-cz-muted)' }}>{user?.email}</p>
                 </div>
+              </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--color-cz-muted)' }}>Target Role</label>
-                    <select value={form.targetRole} onChange={e => update('targetRole', e.target.value)} className="cz-input">
-                      {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-                    </select>
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--color-cz-muted)' }}>Industry</label>
-                    <select value={form.industry} onChange={e => update('industry', e.target.value)} className="cz-input">
-                      {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
-                    </select>
-                  </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={lbl}>Full name</label>
+                  <input value={fullName} onChange={e => setFullName(e.target.value)} style={inp} placeholder="Your name"/>
                 </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--color-cz-muted)' }}>Language</label>
-                  <select value={language} onChange={e => setLanguage(e.target.value)} className="cz-input" style={{ maxWidth: 240 }}>
-                    {['English', 'Luganda', 'Swahili', 'French', 'Arabic'].map(l => <option key={l} value={l}>{l}</option>)}
+                <div>
+                  <label style={lbl}>Target role</label>
+                  <select value={targetRole} onChange={e => setTargetRole(e.target.value)} style={inp}>
+                    <option value="">Select role</option>
+                    {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
                   </select>
                 </div>
-
-                <div className="flex items-center gap-3 pt-2" style={{ borderTop: '1px solid var(--color-cz-border)' }}>
-                  <Button onClick={handleSave}>
-                    {saved ? '✓ Saved!' : 'Save Changes'}
-                  </Button>
-                  {saved && <span className="text-xs" style={{ color: 'var(--color-cz-teal)' }}>Changes saved successfully</span>}
+                <div>
+                  <label style={lbl}>Experience level</label>
+                  <select value={expLevel} onChange={e => setExpLevel(e.target.value)} style={inp}>
+                    {EXPERIENCE_LEVELS.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={lbl}>Industry</label>
+                  <select value={industry} onChange={e => setIndustry(e.target.value)} style={inp}>
+                    <option value="">Select industry</option>
+                    {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
+                  </select>
                 </div>
               </div>
-            )}
 
-            {/* Notifications tab */}
-            {tab === 'notifications' && (
-              <div
-                className="rounded-[var(--radius-lg)] p-6 space-y-5"
-                style={{ background: 'var(--color-cz-surface)', border: '1px solid var(--color-cz-border)' }}
-              >
-                <h2 className="font-syne font-600 text-base" style={{ color: 'var(--color-cz-text)' }}>Notification Preferences</h2>
-                {[
-                  { key: 'email', label: 'Email notifications', desc: 'Session summaries and progress updates via email' },
-                  { key: 'push', label: 'Push notifications', desc: 'Browser alerts for reminders and new features' },
-                  { key: 'weekly', label: 'Weekly report', desc: 'Summary of your week\'s practice sent on Sundays' },
-                ].map(n => (
-                  <div key={n.key} className="flex items-center justify-between py-3" style={{ borderBottom: '1px solid var(--color-cz-border)' }}>
-                    <div>
-                      <p className="text-sm font-medium" style={{ color: 'var(--color-cz-text)' }}>{n.label}</p>
-                      <p className="text-xs mt-0.5" style={{ color: 'var(--color-cz-muted)' }}>{n.desc}</p>
-                    </div>
-                    <button
-                      onClick={() => setNotifs(p => ({ ...p, [n.key]: !p[n.key as keyof typeof p] }))}
-                      className="w-11 h-6 rounded-full transition-all relative"
-                      style={{ background: notifs[n.key as keyof typeof notifs] ? 'var(--color-cz-gold)' : 'var(--color-cz-surface3)' }}
-                    >
-                      <span
-                        className="absolute top-0.5 w-5 h-5 rounded-full transition-all"
-                        style={{
-                          background: 'var(--color-cz-text)',
-                          left: notifs[n.key as keyof typeof notifs] ? 'calc(100% - 22px)' : '2px',
-                        }}
-                      />
-                    </button>
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label style={lbl}>Bio <span style={{ fontWeight: 400, color: 'var(--color-cz-muted)' }}>(optional)</span></label>
+                <textarea value={bio} onChange={e => setBio(e.target.value)} rows={3} style={{ ...inp, resize: 'vertical' }} placeholder="A short intro — helps AI tailor questions to your background"/>
+              </div>
+
+              {error && <p style={{ fontSize: '0.825rem', color: 'var(--color-cz-red)', padding: '0.6rem 0.75rem', background: 'var(--color-cz-red-dim)', borderRadius: 6, margin: '0 0 1rem' }}>{error}</p>}
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', paddingTop: '1rem', borderTop: '1px solid var(--color-cz-border)' }}>
+                <button onClick={handleSave} disabled={saving} style={{ padding: '0.65rem 1.5rem', borderRadius: 8, border: 'none', background: 'var(--color-cz-burg)', color: 'var(--color-cz-bg)', fontFamily: 'var(--font-syne)', fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
+                  {saving ? 'Saving…' : saved ? '✓ Saved!' : 'Save changes'}
+                </button>
+                {saved && <span style={{ fontSize: '0.8rem', color: '#4A7A5A' }}>Changes saved successfully</span>}
+              </div>
+            </div>
+          )}
+
+          {/* ── Notifications ── */}
+          {tab === 'notifications' && (
+            <div style={card}>
+              <h2 style={cardTitle}>Notification preferences</h2>
+              {[
+                { key: 'email',  label: 'Email notifications', desc: 'Session summaries and progress updates via email' },
+                { key: 'weekly', label: 'Weekly report',       desc: 'Summary of your week\'s practice sent on Sundays' },
+                { key: 'push',   label: 'Push notifications',  desc: 'Browser alerts for reminders and new features' },
+              ].map(n => (
+                <div key={n.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 0', borderBottom: '1px solid var(--color-cz-border)' }}>
+                  <div>
+                    <p style={{ margin: '0 0 0.2rem', fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-cz-text)' }}>{n.label}</p>
+                    <p style={{ margin: 0, fontSize: '0.775rem', color: 'var(--color-cz-muted)' }}>{n.desc}</p>
                   </div>
-                ))}
-              </div>
-            )}
+                  <Toggle on={notifs[n.key as keyof typeof notifs]} onToggle={() => setNotifs(p => ({ ...p, [n.key]: !p[n.key as keyof typeof p] }))}/>
+                </div>
+              ))}
+              <p style={{ marginTop: '1rem', fontSize: '0.775rem', color: 'var(--color-cz-subtle)' }}>
+                Note: email notifications require Resend integration (coming soon).
+              </p>
+            </div>
+          )}
 
-            {/* Audio tab */}
-            {tab === 'audio' && (
-              <div
-                className="rounded-[var(--radius-lg)] p-6 space-y-5"
-                style={{ background: 'var(--color-cz-surface)', border: '1px solid var(--color-cz-border)' }}
-              >
-                <h2 className="font-syne font-600 text-base" style={{ color: 'var(--color-cz-text)' }}>Audio &amp; Video</h2>
-                <div className="rounded-[var(--radius-md)] p-4" style={{ background: 'var(--color-cz-surface2)' }}>
-                  <p className="text-sm font-medium mb-2" style={{ color: 'var(--color-cz-text)' }}>Microphone</p>
-                  <p className="text-xs mb-3" style={{ color: 'var(--color-cz-muted)' }}>Used for voice answers during sessions</p>
-                  <Button variant="secondary" size="sm">Test Microphone</Button>
-                </div>
-                <div className="rounded-[var(--radius-md)] p-4" style={{ background: 'var(--color-cz-surface2)' }}>
-                  <p className="text-sm font-medium mb-2" style={{ color: 'var(--color-cz-text)' }}>Camera</p>
-                  <p className="text-xs mb-3" style={{ color: 'var(--color-cz-muted)' }}>Required for video mock sessions (Pro)</p>
-                  <Button variant="secondary" size="sm">Test Camera</Button>
-                </div>
+          {/* ── Audio & Video ── */}
+          {tab === 'audio' && (
+            <div style={card}>
+              <h2 style={cardTitle}>Audio & Video</h2>
+              <div style={{ padding: '1rem', borderRadius: 8, background: 'var(--color-cz-surface2)', marginBottom: '1rem' }}>
+                <p style={{ margin: '0 0 0.25rem', fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-cz-text)' }}>Microphone</p>
+                <p style={{ margin: '0 0 0.875rem', fontSize: '0.775rem', color: 'var(--color-cz-muted)' }}>Used for voice answers during sessions (Pro feature)</p>
+                <button style={{ padding: '0.5rem 1rem', borderRadius: 7, border: '1px solid var(--color-cz-border2)', background: 'var(--color-cz-surface)', color: 'var(--color-cz-text)', fontSize: '0.825rem', cursor: 'pointer' }}>
+                  Test microphone
+                </button>
               </div>
-            )}
+              <div style={{ padding: '1rem', borderRadius: 8, background: 'var(--color-cz-surface2)' }}>
+                <p style={{ margin: '0 0 0.25rem', fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-cz-text)' }}>Camera</p>
+                <p style={{ margin: '0 0 0.875rem', fontSize: '0.775rem', color: 'var(--color-cz-muted)' }}>Required for video mock sessions (Pro feature)</p>
+                <button style={{ padding: '0.5rem 1rem', borderRadius: 7, border: '1px solid var(--color-cz-border2)', background: 'var(--color-cz-surface)', color: 'var(--color-cz-text)', fontSize: '0.825rem', cursor: 'pointer' }}>
+                  Test camera
+                </button>
+              </div>
+            </div>
+          )}
 
-            {/* Privacy tab */}
-            {tab === 'privacy' && (
-              <div
-                className="rounded-[var(--radius-lg)] p-6 space-y-5"
-                style={{ background: 'var(--color-cz-surface)', border: '1px solid var(--color-cz-border)' }}
-              >
-                <h2 className="font-syne font-600 text-base" style={{ color: 'var(--color-cz-text)' }}>Privacy &amp; Data</h2>
-                <div className="space-y-3 text-sm" style={{ color: 'var(--color-cz-muted)' }}>
-                  <p>Your interview data is encrypted and never shared with third parties.</p>
-                  <p>Session transcripts are stored for 90 days by default.</p>
-                </div>
-                <div className="flex flex-col gap-3 pt-2">
-                  <Button variant="secondary">Export My Data (CSV)</Button>
-                  <Button variant="secondary">Clear Session History</Button>
-                  <div className="pt-2" style={{ borderTop: '1px solid var(--color-cz-border)' }}>
-                    <Button variant="danger" size="sm">Delete Account</Button>
-                    <p className="text-xs mt-2" style={{ color: 'var(--color-cz-muted)' }}>This action cannot be undone.</p>
-                  </div>
+          {/* ── Privacy ── */}
+          {tab === 'privacy' && (
+            <div style={card}>
+              <h2 style={cardTitle}>Privacy & Data</h2>
+              <div style={{ fontSize: '0.875rem', color: 'var(--color-cz-muted)', lineHeight: 1.7, marginBottom: '1.5rem' }}>
+                <p style={{ margin: '0 0 0.5rem' }}>Your interview data is encrypted and never shared with third parties.</p>
+                <p style={{ margin: '0 0 0.5rem' }}>Session transcripts are stored for as long as your account is active.</p>
+                <p style={{ margin: 0 }}>You can export or delete your data at any time below.</p>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <button style={{ padding: '0.65rem 1.25rem', borderRadius: 8, border: '1px solid var(--color-cz-border2)', background: 'var(--color-cz-surface)', color: 'var(--color-cz-text)', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer', textAlign: 'left' }}>
+                  Export my data (CSV)
+                </button>
+                <div style={{ paddingTop: '1rem', borderTop: '1px solid var(--color-cz-border)' }}>
+                  <button onClick={handleDeleteAccount} style={{ padding: '0.6rem 1.25rem', borderRadius: 8, border: '1px solid #8B353540', background: 'var(--color-cz-red-dim)', color: 'var(--color-cz-red)', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer' }}>
+                    Delete account
+                  </button>
+                  <p style={{ margin: '0.5rem 0 0', fontSize: '0.75rem', color: 'var(--color-cz-subtle)' }}>This action permanently deletes your account and all data. Cannot be undone.</p>
                 </div>
               </div>
-            )}
-          </div>
+            </div>
+          )}
+
         </div>
       </div>
-    </AppShell>
+    </div>
   )
 }
+
+const card: React.CSSProperties = { background: 'var(--color-cz-surface)', border: '1px solid var(--color-cz-border)', borderRadius: 12, padding: '1.5rem' }
+const cardTitle: React.CSSProperties = { fontFamily: 'var(--font-syne)', fontWeight: 600, fontSize: '1rem', color: 'var(--color-cz-text)', margin: '0 0 1.25rem' }
+const lbl: React.CSSProperties = { display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-cz-text)', marginBottom: '0.4rem' }
+const inp: React.CSSProperties = { width: '100%', padding: '0.65rem 0.875rem', borderRadius: 8, border: '1px solid var(--color-cz-border2)', background: 'var(--color-cz-surface2)', color: 'var(--color-cz-text)', fontSize: '0.875rem', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }

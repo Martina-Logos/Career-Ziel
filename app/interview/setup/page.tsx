@@ -16,17 +16,28 @@ import {
   AlertCircle,
   Loader2,
 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/Button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
-import { Badge } from '@/components/ui/badge'
+import { Badge } from '@/components/ui/Badge'
 import { useInterview } from '@/lib/stores'
 import { interviewTypes, industries } from '@/lib/mock-data'
 import { toast } from 'sonner'
+
+type InterviewConfig = {
+  jobDescription: string
+  role: string
+  industry: string
+  type: 'behavioral' | 'technical' | 'case-study' | 'mixed'
+  duration: number
+  difficulty: 'easy' | 'medium' | 'hard'
+  cameraEnabled: boolean
+  micEnabled: boolean
+}
 
 function SetupContent() {
   const router = useRouter()
@@ -35,7 +46,7 @@ function SetupContent() {
   const { startSession } = useInterview()
 
   const [isLoading, setIsLoading] = useState(false)
-  const [config, setConfig] = useState({
+  const [config, setConfig] = useState<InterviewConfig>({
     jobDescription: '',
     role: '',
     industry: '',

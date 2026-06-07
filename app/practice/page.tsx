@@ -1,309 +1,324 @@
 'use client'
+// app/practice/page.tsx
+// Single-step setup: pick persona → configure role/difficulty → start.
+// No "mode" step. Free users see all personas but Pro ones show upgrade modal.
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useApp } from '@/context/AppContext'
-import { InterviewType, Difficulty, PracticeMode } from '@/types'
-import { ROLES, INDUSTRIES, cn } from '@/lib/utils'
-import Button from '@/components/ui/Button'
+import { PERSONAS, DIFFICULTY_CONFIG, type Persona } from '@/lib/personas'
+import { useUser } from '@/hooks/useUser'
+import Link from 'next/link'
 
-type Step = 'mode' | 'config'
-
-const modes: { id: PracticeMode; title: string; desc: string; time: string; features: string[]; premium?: boolean }[] = [
-  {
-    id: 'text',
-    title: 'Text Practice',
-    desc: 'Classic Q&A. Type your answers, get instant AI feedback.',
-    time: '15–30 min',
-    features: ['AI question generation', 'Instant scoring', 'Answer feedback', 'Voice input supported'],
-  },
-  {
-    id: 'video',
-    title: 'Video Mock',
-    desc: 'Full simulation with your camera. See yourself while you answer.',
-    time: '30–45 min',
-    features: ['Live transcript', 'Filler word detection', 'Eye contact feedback', 'Video playback'],
-    premium: true,
-  },
+const ROLES = [
+  'Software Engineer', 'Product Manager', 'Data Scientist', 'Data Analyst',
+  'UX / Product Designer', 'Marketing Manager', 'Business Analyst',
+  'DevOps / Platform Engineer', 'Engineering Manager', 'Other',
 ]
 
-const interviewTypes: { id: InterviewType; label: string; emoji: string; desc: string }[] = [
-  { id: 'behavioral', label: 'Behavioral', emoji: '🗣️', desc: 'Past experiences, soft skills' },
-  { id: 'technical', label: 'Technical', emoji: '💻', desc: 'Role-specific knowledge' },
-  { id: 'general', label: 'General', emoji: '📋', desc: 'Culture fit, motivations' },
-  { id: 'case-study', label: 'Case Study', emoji: '🔍', desc: 'Problem-solving scenarios' },
-]
-
-const difficulties: { id: Difficulty; label: string; desc: string }[] = [
-  { id: 'easy', label: 'Easy', desc: 'Entry level' },
-  { id: 'medium', label: 'Medium', desc: 'Mid-level' },
-  { id: 'hard', label: 'Hard', desc: 'Senior+' },
+const QUESTION_TYPES = [
+  { id: 'technical',  label: 'Technical',  emoji: '💻' },
+  { id: 'behavioral', label: 'Behavioral', emoji: '🗣️' },
+  { id: 'general',    label: 'General',    emoji: '📋' },
 ]
 
 export default function PracticePage() {
   const router = useRouter()
-  const { user, setCurrentSession } = useApp()
-  const [step, setStep] = useState<Step>('mode')
-  const [mode, setMode] = useState<PracticeMode>('text')
-  const [selectedTypes, setSelectedTypes] = useState<InterviewType[]>(['behavioral', 'general'])
-  const [difficulty, setDifficulty] = useState<Difficulty>('medium')
-  const [role, setRole] = useState(user?.targetRole || '')
-  const [industry, setIndustry] = useState(user?.industry || '')
-  const [questionCount, setQuestionCount] = useState(5)
-  const [jd, setJd] = useState('')
-  const [showJd, setShowJd] = useState(false)
+  const { user, loading } = useUser()
 
-  function toggleType(type: InterviewType) {
+  const userPlan = user?.plan ?? 'free'
+
+  const [selectedPersona, setSelectedPersona]     = useState<Persona | null>(null)
+  const [lockedPersona, setLockedPersona]         = useState<Persona | null>(null) // for pro modal
+  const [role, setRole]                           = useState(user?.target_role ?? '')
+  const [difficulty, setDifficulty]               = useState<'junior' | 'mid' | 'senior'>('mid')
+  const [selectedTypes, setSelectedTypes]         = useState<string[]>(['technical', 'behavioral', 'general'])
+
+  function toggleType(id: string) {
     setSelectedTypes(prev =>
-      prev.includes(type)
-        ? prev.length > 1 ? prev.filter(t => t !== type) : prev
-        : [...prev, type]
+      prev.includes(id)
+        ? prev.length > 1 ? prev.filter(t => t !== id) : prev
+        : [...prev, id]
     )
   }
 
-  function handleStart() {
-    setCurrentSession({
-      mode,
-      role,
-      industry,
-      difficulty,
-      interviewType: selectedTypes[0],
-    })
-    router.push('/practice/session')
+  function handlePersonaClick(persona: Persona) {
+    if (persona.plan === 'pro' && userPlan === 'free') {
+      setLockedPersona(persona)
+    } else {
+      setSelectedPersona(persona)
+      setLockedPersona(null)
+    }
   }
 
+  function handleStart() {
+    if (!selectedPersona || !role) return
+    const params = new URLSearchParams({
+      persona:    selectedPersona.id,
+      role,
+      difficulty,
+      types:      selectedTypes.join(','),
+    })
+    router.push(`/practice/session?${params.toString()}`)
+  }
+
+  const canStart = !!selectedPersona && !!role && selectedTypes.length > 0
+
   return (
-    <div className="p-8 max-w-4xl mx-auto">
+    <div style={{ maxWidth: 860, margin: '0 auto' }}>
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="font-syne font-700 text-2xl tracking-tight" style={{ color: 'var(--color-cz-text)' }}>
-          {step === 'mode' ? 'Choose Practice Mode' : 'Configure Your Session'}
+      <div style={{ marginBottom: '2rem' }}>
+        <h1 style={{ fontFamily: 'var(--font-syne)', fontWeight: 700, fontSize: '1.5rem', color: 'var(--color-cz-text)', margin: '0 0 0.25rem' }}>
+          Start a session
         </h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--color-cz-muted)' }}>
-          {step === 'mode'
-            ? 'Select how you want to practice today.'
-            : 'Tailor the questions to your exact needs.'}
+        <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--color-cz-muted)' }}>
+          Choose your interviewer, configure your session, and practise.
         </p>
       </div>
 
-      {/* Step indicator */}
-      <div className="flex items-center gap-2 mb-8">
-        {(['mode', 'config'] as Step[]).map((s, i) => (
-          <div key={s} className="flex items-center gap-2">
-            <div
-              className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-syne font-600 transition-all"
-              style={{
-                background: step === s || (s === 'mode' && step === 'config') ? 'var(--color-cz-gold)' : 'var(--color-cz-surface2)',
-                color: step === s || (s === 'mode' && step === 'config') ? '#1a1910' : 'var(--color-cz-muted)',
-              }}
-            >
-              {s === 'mode' && step === 'config' ? '✓' : i + 1}
-            </div>
-            <span
-              className="text-sm capitalize"
-              style={{ color: step === s ? 'var(--color-cz-text)' : 'var(--color-cz-muted)' }}
-            >
-              {s === 'mode' ? 'Mode' : 'Configure'}
-            </span>
-            {i === 0 && <div className="w-8 h-px mx-1" style={{ background: 'var(--color-cz-border2)' }} />}
-          </div>
-        ))}
-      </div>
+      {/* ── Section 1: Persona picker ── */}
+      <div style={{ marginBottom: '2rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+          <h2 style={{ fontFamily: 'var(--font-syne)', fontWeight: 600, fontSize: '1rem', color: 'var(--color-cz-text)', margin: 0 }}>
+            Choose your interviewer
+          </h2>
+          {userPlan === 'free' && (
+            <Link href="/pricing" style={{ fontSize: '0.775rem', color: 'var(--color-cz-burg)', fontWeight: 600, textDecoration: 'none' }}>
+              Unlock all 9 personas →
+            </Link>
+          )}
+        </div>
 
-      {/* Step 1: Mode selection */}
-      {step === 'mode' && (
-        <div className="space-y-4 animate-fade-up">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {modes.map(m => (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: '0.75rem' }}>
+          {PERSONAS.map(persona => {
+            const isLocked   = persona.plan === 'pro' && userPlan === 'free'
+            const isSelected = selectedPersona?.id === persona.id
+            const diff       = DIFFICULTY_CONFIG[persona.difficulty]
+
+            return (
               <button
-                key={m.id}
-                onClick={() => !m.premium && setMode(m.id)}
-                className="text-left rounded-[var(--radius-lg)] p-6 transition-all duration-200 relative overflow-hidden group"
+                key={persona.id}
+                onClick={() => handlePersonaClick(persona)}
                 style={{
-                  background: mode === m.id ? 'var(--color-cz-gold-dim)' : 'var(--color-cz-surface)',
-                  border: `1px solid ${mode === m.id ? 'var(--color-cz-gold-border)' : 'var(--color-cz-border)'}`,
-                  opacity: m.premium ? 0.7 : 1,
-                  cursor: m.premium ? 'not-allowed' : 'pointer',
+                  position: 'relative',
+                  textAlign: 'left',
+                  padding: '1rem',
+                  borderRadius: 10,
+                  border: isSelected
+                    ? '2px solid var(--color-cz-burg)'
+                    : '1px solid var(--color-cz-border2)',
+                  background: isSelected
+                    ? 'var(--color-cz-burg-dim)'
+                    : 'var(--color-cz-surface)',
+                  cursor: 'pointer',
+                  opacity: isLocked ? 0.7 : 1,
+                  transition: 'all 0.15s',
+                  transform: isSelected ? 'translateY(-1px)' : 'none',
+                  boxShadow: isSelected ? '0 4px 16px rgba(64,31,40,0.12)' : 'none',
                 }}
               >
-                {m.premium && (
-                  <span
-                    className="absolute top-3 right-3 text-[10px] font-syne font-600 px-2 py-0.5 rounded-full border"
-                    style={{ background: 'var(--color-cz-gold-dim)', color: 'var(--color-cz-gold)', borderColor: 'var(--color-cz-gold-border)' }}
-                  >
-                    PRO
-                  </span>
+                {/* Lock badge */}
+                {isLocked && (
+                  <span style={{
+                    position: 'absolute', top: '0.5rem', right: '0.5rem',
+                    fontSize: '0.6rem', fontWeight: 700,
+                    padding: '0.15rem 0.45rem', borderRadius: 4,
+                    background: 'var(--color-cz-burg)', color: 'var(--color-cz-bg)',
+                    letterSpacing: '0.05em',
+                  }}>PRO</span>
                 )}
-                <div className="text-3xl mb-4">{m.icon}</div>
-                <h3 className="font-syne font-600 text-lg mb-1.5" style={{ color: mode === m.id ? 'var(--color-cz-gold-light)' : 'var(--color-cz-text)' }}>
-                  {m.title}
-                </h3>
-                <p className="text-sm mb-4" style={{ color: 'var(--color-cz-muted)' }}>{m.desc}</p>
-                <div className="flex items-center gap-1.5 mb-4">
-                  <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} style={{ color: 'var(--color-cz-muted)' }}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span className="text-xs" style={{ color: 'var(--color-cz-muted)' }}>{m.time}</span>
+
+                {/* Check */}
+                {isSelected && (
+                  <span style={{
+                    position: 'absolute', top: '0.5rem', right: '0.5rem',
+                    width: 20, height: 20, borderRadius: '50%',
+                    background: 'var(--color-cz-burg)', color: 'var(--color-cz-bg)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '0.7rem',
+                  }}>✓</span>
+                )}
+
+                <span style={{ fontSize: '1.5rem', display: 'block', marginBottom: '0.5rem' }}>{persona.emoji}</span>
+
+                <span style={{ display: 'block', fontFamily: 'var(--font-syne)', fontWeight: 600, fontSize: '0.825rem', color: 'var(--color-cz-text)', marginBottom: '0.2rem', lineHeight: 1.3 }}>
+                  {persona.name}
+                </span>
+                <span style={{ display: 'block', fontSize: '0.725rem', color: 'var(--color-cz-muted)', marginBottom: '0.6rem' }}>
+                  {persona.subtitle}
+                </span>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '0.5rem', borderTop: '1px solid var(--color-cz-border)' }}>
+                  <span style={{ fontSize: '0.68rem', color: 'var(--color-cz-muted)' }}>
+                    ⏱ {persona.timerSeconds >= 60 ? `${persona.timerSeconds / 60}min` : `${persona.timerSeconds}s`}
+                  </span>
+                  <span style={{ fontSize: '0.65rem', fontWeight: 600, padding: '0.1rem 0.4rem', borderRadius: 4, background: `${diff.color}18`, color: diff.color }}>
+                    {diff.label}
+                  </span>
                 </div>
-                <ul className="space-y-1.5">
-                  {m.features.map(f => (
-                    <li key={f} className="flex items-center gap-2 text-xs" style={{ color: 'var(--color-cz-muted)' }}>
-                      <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} style={{ color: 'var(--color-cz-teal)', flexShrink: 0 }}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                      </svg>
-                      {f}
-                    </li>
-                  ))}
-                </ul>
               </button>
-            ))}
-          </div>
-
-          <div className="flex justify-end pt-2">
-            <Button onClick={() => setStep('config')} size="lg">
-              Continue →
-            </Button>
-          </div>
+            )
+          })}
         </div>
-      )}
 
-      {/* Step 2: Configure */}
-      {step === 'config' && (
-        <div className="space-y-6 animate-fade-up">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {/* Role */}
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--color-cz-muted)' }}>Target Role</label>
-              <select value={role} onChange={e => setRole(e.target.value)} className="cz-input">
-                <option value="">Select role...</option>
-                {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-              </select>
-            </div>
-
-            {/* Industry */}
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--color-cz-muted)' }}>Industry</label>
-              <select value={industry} onChange={e => setIndustry(e.target.value)} className="cz-input">
-                <option value="">Select industry...</option>
-                {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
-              </select>
+        {/* Selected persona description strip */}
+        {selectedPersona && (
+          <div style={{ marginTop: '0.875rem', padding: '0.875rem 1rem', borderRadius: 8, background: 'var(--color-cz-surface2)', border: '1px solid var(--color-cz-border2)', display: 'flex', gap: '0.6rem', alignItems: 'flex-start' }}>
+            <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>{selectedPersona.emoji}</span>
+            <div>
+              <span style={{ fontFamily: 'var(--font-syne)', fontWeight: 600, fontSize: '0.825rem', color: 'var(--color-cz-text)' }}>
+                {selectedPersona.name}
+              </span>
+              <span style={{ marginLeft: '0.5rem', fontSize: '0.8rem', color: 'var(--color-cz-muted)' }}>
+                {selectedPersona.description}
+              </span>
             </div>
           </div>
+        )}
+      </div>
 
-          {/* Question types */}
+      {/* ── Section 2: Session config ── */}
+      <div style={{ background: 'var(--color-cz-surface)', border: '1px solid var(--color-cz-border)', borderRadius: 12, padding: '1.5rem', marginBottom: '1.5rem' }}>
+        <h2 style={{ fontFamily: 'var(--font-syne)', fontWeight: 600, fontSize: '1rem', color: 'var(--color-cz-text)', margin: '0 0 1.25rem' }}>
+          Configure session
+        </h2>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginBottom: '1.25rem' }}>
+          {/* Role */}
           <div>
-            <label className="text-xs font-medium uppercase tracking-wider mb-2.5 block" style={{ color: 'var(--color-cz-muted)' }}>
-              Question Types <span className="normal-case opacity-60">(select all that apply)</span>
-            </label>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-              {interviewTypes.map(t => {
-                const active = selectedTypes.includes(t.id)
-                return (
-                  <button
-                    key={t.id}
-                    onClick={() => toggleType(t.id)}
-                    className="flex flex-col items-start gap-1 p-3 rounded-[var(--radius-md)] border text-left transition-all duration-150"
-                    style={{
-                      background: active ? 'var(--color-cz-gold-dim)' : 'var(--color-cz-surface2)',
-                      borderColor: active ? 'var(--color-cz-gold-border)' : 'var(--color-cz-border)',
-                    }}
-                  >
-                    <span className="text-lg">{t.emoji}</span>
-                    <span className="text-xs font-syne font-600" style={{ color: active ? 'var(--color-cz-gold-light)' : 'var(--color-cz-text)' }}>
-                      {t.label}
-                    </span>
-                    <span className="text-[10px]" style={{ color: 'var(--color-cz-muted)' }}>{t.desc}</span>
-                  </button>
-                )
-              })}
-            </div>
+            <label style={lbl}>Target role</label>
+            <select value={role} onChange={e => setRole(e.target.value)} style={input}>
+              <option value="">Select role…</option>
+              {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
           </div>
 
           {/* Difficulty */}
           <div>
-            <label className="text-xs font-medium uppercase tracking-wider mb-2.5 block" style={{ color: 'var(--color-cz-muted)' }}>Difficulty</label>
-            <div className="flex gap-2.5">
-              {difficulties.map(d => (
+            <label style={lbl}>Difficulty</label>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              {(['junior', 'mid', 'senior'] as const).map(d => (
                 <button
-                  key={d.id}
-                  onClick={() => setDifficulty(d.id)}
-                  className="flex-1 py-2.5 rounded-[var(--radius-md)] border text-sm font-syne font-600 transition-all"
+                  key={d}
+                  onClick={() => setDifficulty(d)}
                   style={{
-                    background: difficulty === d.id ? 'var(--color-cz-gold-dim)' : 'var(--color-cz-surface2)',
-                    borderColor: difficulty === d.id ? 'var(--color-cz-gold-border)' : 'var(--color-cz-border)',
-                    color: difficulty === d.id ? 'var(--color-cz-gold-light)' : 'var(--color-cz-muted)',
+                    flex: 1, padding: '0.6rem 0.25rem', borderRadius: 7,
+                    border: difficulty === d ? '1px solid var(--color-cz-burg)' : '1px solid var(--color-cz-border2)',
+                    background: difficulty === d ? 'var(--color-cz-burg-dim)' : 'var(--color-cz-surface2)',
+                    color: difficulty === d ? 'var(--color-cz-burg)' : 'var(--color-cz-muted)',
+                    fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize',
                   }}
                 >
-                  {d.label}
-                  <span className="block text-[10px] font-dm font-normal mt-0.5" style={{ color: 'var(--color-cz-subtle)' }}>
-                    {d.desc}
-                  </span>
+                  {d === 'mid' ? 'Mid' : d.charAt(0).toUpperCase() + d.slice(1)}
                 </button>
               ))}
             </div>
           </div>
+        </div>
 
-          {/* Question count slider */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--color-cz-muted)' }}>
-                Number of Questions
-              </label>
-              <span className="font-syne font-600 text-sm" style={{ color: 'var(--color-cz-gold-light)' }}>{questionCount}</span>
-            </div>
-            <input
-              type="range" min={3} max={10} step={1}
-              value={questionCount}
-              onChange={e => setQuestionCount(Number(e.target.value))}
-              className="w-full h-1.5 rounded-full appearance-none outline-none cursor-pointer"
-              style={{ accentColor: 'var(--color-cz-gold)', background: 'var(--color-cz-surface3)' }}
-            />
-            <div className="flex justify-between text-[10px] mt-1" style={{ color: 'var(--color-cz-subtle)' }}>
-              <span>3 (quick)</span><span>10 (full)</span>
-            </div>
+        {/* Question types */}
+        <div>
+          <label style={lbl}>Question types</label>
+          <div style={{ display: 'flex', gap: '0.6rem' }}>
+            {QUESTION_TYPES.map(t => {
+              const active = selectedTypes.includes(t.id)
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => toggleType(t.id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.4rem',
+                    padding: '0.5rem 0.875rem', borderRadius: 20,
+                    border: active ? '1px solid var(--color-cz-burg)' : '1px solid var(--color-cz-border2)',
+                    background: active ? 'var(--color-cz-burg-dim)' : 'var(--color-cz-surface2)',
+                    color: active ? 'var(--color-cz-burg)' : 'var(--color-cz-muted)',
+                    fontSize: '0.825rem', fontWeight: active ? 600 : 400, cursor: 'pointer',
+                  }}
+                >
+                  <span>{t.emoji}</span> {t.label}
+                </button>
+              )
+            })}
           </div>
+        </div>
+      </div>
 
-          {/* Job description paste */}
-          <div>
-            <button
-              onClick={() => setShowJd(p => !p)}
-              className="flex items-center gap-2 text-sm transition-colors hover:text-[var(--color-cz-text)]"
-              style={{ color: 'var(--color-cz-gold)' }}
-            >
-              <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d={showJd ? 'M19 9l-7 7-7-7' : 'M9 5l7 7-7 7'} />
-              </svg>
-              {showJd ? 'Hide' : 'Add'} job description (optional)
-            </button>
-            {showJd && (
-              <div className="mt-3 animate-fade-up">
-                <textarea
-                  value={jd}
-                  onChange={e => setJd(e.target.value)}
-                  rows={5}
-                  placeholder="Paste the job description here. AI will extract skills and requirements to generate more targeted questions..."
-                  className="cz-input resize-none"
-                />
-              </div>
-            )}
-          </div>
+      {/* ── Start button ── */}
+      <button
+        onClick={handleStart}
+        disabled={!canStart}
+        style={{
+          width: '100%', padding: '0.9rem',
+          borderRadius: 10, border: 'none',
+          background: canStart ? 'var(--color-cz-burg)' : 'var(--color-cz-surface3)',
+          color: canStart ? 'var(--color-cz-bg)' : 'var(--color-cz-muted)',
+          fontFamily: 'var(--font-syne)', fontWeight: 700, fontSize: '1rem',
+          cursor: canStart ? 'pointer' : 'not-allowed',
+          transition: 'all 0.15s',
+        }}
+      >
+        {!selectedPersona ? 'Select an interviewer to continue' : !role ? 'Select a role to continue' : 'Start interview →'}
+      </button>
 
-          {/* Actions */}
-          <div className="flex gap-3 pt-2">
-            <Button variant="secondary" onClick={() => setStep('mode')}>
-              ← Back
-            </Button>
-            <Button
-              onClick={handleStart}
-              disabled={!role || !industry}
-              size="lg"
-              className="flex-1 justify-center"
-            >
-              Start Interview →
-            </Button>
+      {/* ── Pro upgrade modal ── */}
+      {lockedPersona && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 100,
+          background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: '1rem',
+        }}
+          onClick={() => setLockedPersona(null)}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: 'var(--color-cz-surface)',
+              border: '1px solid var(--color-cz-border2)',
+              borderRadius: 16, padding: '2rem',
+              maxWidth: 420, width: '100%',
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>{lockedPersona.emoji}</div>
+            <div style={{ display: 'inline-block', padding: '0.2rem 0.75rem', borderRadius: 20, background: 'var(--color-cz-burg)', color: 'var(--color-cz-bg)', fontSize: '0.7rem', fontWeight: 700, marginBottom: '0.875rem', letterSpacing: '0.05em' }}>
+              PRO PERSONA
+            </div>
+            <h3 style={{ fontFamily: 'var(--font-syne)', fontWeight: 700, fontSize: '1.2rem', color: 'var(--color-cz-text)', margin: '0 0 0.5rem' }}>
+              {lockedPersona.name}
+            </h3>
+            <p style={{ fontSize: '0.875rem', color: 'var(--color-cz-muted)', margin: '0 0 0.5rem', lineHeight: 1.6 }}>
+              {lockedPersona.description}
+            </p>
+            <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'center', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+              {lockedPersona.traits.map((t, i) => (
+                <span key={i} style={{ fontSize: '0.72rem', padding: '0.2rem 0.6rem', borderRadius: 20, background: 'var(--color-cz-surface2)', color: 'var(--color-cz-muted)', border: '1px solid var(--color-cz-border)' }}>
+                  {t}
+                </span>
+              ))}
+            </div>
+            <p style={{ fontSize: '0.825rem', color: 'var(--color-cz-muted)', margin: '0 0 1.25rem' }}>
+              Upgrade to Pro to unlock all 9 personas, advanced analytics, and the job description extractor.
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button
+                onClick={() => setLockedPersona(null)}
+                style={{ flex: 1, padding: '0.7rem', borderRadius: 8, border: '1px solid var(--color-cz-border2)', background: 'var(--color-cz-surface)', color: 'var(--color-cz-text)', fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer' }}
+              >
+                Maybe later
+              </button>
+              <Link
+                href="/pricing"
+                style={{ flex: 1, padding: '0.7rem', borderRadius: 8, background: 'var(--color-cz-burg)', color: 'var(--color-cz-bg)', fontFamily: 'var(--font-syne)', fontWeight: 700, fontSize: '0.875rem', textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                Upgrade to Pro →
+              </Link>
+            </div>
           </div>
         </div>
       )}
     </div>
   )
 }
+
+const lbl: React.CSSProperties = { display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-cz-text)', marginBottom: '0.5rem' }
+const input: React.CSSProperties = { width: '100%', padding: '0.65rem 0.875rem', borderRadius: 8, border: '1px solid var(--color-cz-border2)', background: 'var(--color-cz-surface2)', color: 'var(--color-cz-text)', fontSize: '0.875rem', outline: 'none', boxSizing: 'border-box' }

@@ -1,44 +1,82 @@
 // app/auth/callback/route.ts
-// Supabase redirects here after the user clicks the verification link in their email.
-// This exchanges the one-time code for a real session, then sends the user to onboarding.
+// Handles Supabase email confirmation via token_hash (no PKCE verifier needed).
+// This works cross-browser and cross-device reliably.
 
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse, type NextRequest } from 'next/server'
+import { type EmailOtpType } from '@supabase/supabase-js'
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url)
+
+  // Supabase email links contain token_hash + type
+  const token_hash = searchParams.get('token_hash')
+  const type       = searchParams.get('type') as EmailOtpType | null
+  const next       = searchParams.get('next') ?? '/profile-setup'
+
+  // Also handle legacy PKCE code param just in case
   const code = searchParams.get('code')
-  // Where to send the user after verification — default to onboarding
-  const next = searchParams.get('next') ?? '/onboarding'
 
-  if (code) {
-    const cookieStore = await cookies()
+  const cookieStore = await cookies()
 
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() { return cookieStore.getAll() },
-          setAll(cookiesToSet) {
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() { return cookieStore.getAll() },
+        setAll(cookiesToSet) {
+          try {
             cookiesToSet.forEach(({ name, value, options }) =>
               cookieStore.set(name, value, options)
             )
-          },
+          } catch { /* Server Component — safe to ignore */ }
         },
-      }
-    )
+      },
+    }
+  )
 
-    const { error } = await supabase.auth.exchangeCodeForSession(code)
+  let userId: string | undefined
 
-    if (!error) {
-      // Verified and session is set — send to onboarding (first time)
-      // or dashboard if they've already completed onboarding
-      return NextResponse.redirect(`${origin}${next}`)
+  // ── Primary path: token_hash (what Supabase sends in confirmation emails)
+  if (token_hash && type) {
+    const { data, error } = await supabase.auth.verifyOtp({
+      token_hash,
+      type,
+    })
+    if (error) {
+      console.error('[callback] verifyOtp failed:', error.message)
+    } else {
+      userId = data.session?.user?.id ?? data.user?.id
     }
   }
 
-  // Something went wrong — send to an error page
-  return NextResponse.redirect(`${origin}/auth/auth-error`)
+  // ── Fallback: PKCE code (only works same-browser)
+  if (!userId && code) {
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+    if (error) {
+      console.error('[callback] exchangeCodeForSession failed:', error.message)
+    } else {
+      userId = data.session?.user?.id
+    }
+  }
+
+  if (!userId) {
+    console.error('[callback] Could not verify user — redirecting to error page')
+    return NextResponse.redirect(`${origin}/auth/auth-error`)
+  }
+
+  // Check if profile already complete → skip setup
+  const { data: profile } = await supabase
+    .from('users')
+    .select('target_role')
+    .eq('id', userId)
+    .single()
+
+  if (profile?.target_role) {
+    return NextResponse.redirect(`${origin}/dashboard`)
+  }
+
+  return NextResponse.redirect(`${origin}${next}`)
 }

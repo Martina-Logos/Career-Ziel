@@ -1,363 +1,506 @@
 'use client'
+// app/practice/session/page.tsx
+// Client Component — handles UI state only.
+// All AI + DB calls go through Server Actions in app/practice/actions.ts.
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
-import { useApp } from '@/context/AppContext'
-import { Question, QuestionFeedback, Difficulty } from '@/types'
-import { generateQuestions, evaluateAnswer } from '@/lib/ai'
-import { formatDuration, generateId } from '@/lib/utils'
-import Badge from '@/components/ui/Badge'
-import Button from '@/components/ui/Button'
-import ScoreRing from '@/components/ui/ScoreRing'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { getPersona } from '@/lib/personas'
+import {
+  startSessionAction,
+  submitAnswerAction,
+  completeSessionAction,
+  abandonSessionAction,
+} from '@/app/practice/actions'
 
-type Phase = 'loading' | 'question' | 'evaluating' | 'feedback' | 'done'
+type Phase = 'loading' | 'question' | 'submitting' | 'feedback' | 'complete' | 'error'
 
-declare global {
-  interface Window {
-    SpeechRecognition: typeof SpeechRecognition
-    webkitSpeechRecognition: typeof SpeechRecognition
-  }
+interface Question {
+  index: number
+  text: string
+  type: 'technical' | 'behavioral' | 'general'
+  hint?: string
+}
+
+interface AnswerResult {
+  score: number
+  feedback: string
+  improvementTip: string
+}
+
+interface CompletedAnswer {
+  question: string
+  answer: string
+  score: number
+  feedback: string
+}
+
+const TYPE_LABEL: Record<string, string> = {
+  technical: 'Technical',
+  behavioral: 'Behavioral',
+  general: 'General',
+}
+
+const TYPE_COLOR: Record<string, string> = {
+  technical: 'var(--color-cz-blue-deep)',
+  behavioral: 'var(--color-cz-burg)',
+  general: 'var(--color-cz-green)',
+}
+
+function scoreColor(score: number) {
+  if (score >= 80) return '#4A7A5A'
+  if (score >= 60) return '#A0622A'
+  return '#8B3535'
 }
 
 export default function SessionPage() {
   const router = useRouter()
-  const { currentSession, addSession, user } = useApp()
+  const searchParams = useSearchParams()
+
+  // Config from URL params (set by practice setup page)
+  const personaId   = searchParams.get('persona')   ?? 'friendly'
+  const role        = searchParams.get('role')       ?? 'Software Engineer'
+  const difficulty  = (searchParams.get('difficulty') ?? 'mid') as 'junior' | 'mid' | 'senior'
+  const typesParam  = searchParams.get('types')      ?? 'technical,behavioral,general'
+  const questionTypes = typesParam.split(',') as Array<'technical' | 'behavioral' | 'general'>
+
+  const persona = getPersona(personaId)
+
+  // Session state
   const [phase, setPhase] = useState<Phase>('loading')
+  const [sessionId, setSessionId] = useState<string | null>(null)
   const [questions, setQuestions] = useState<Question[]>([])
-  const [currentIdx, setCurrentIdx] = useState(0)
+  const [currentIndex, setCurrentIndex] = useState(0)
   const [answer, setAnswer] = useState('')
-  const [feedbacks, setFeedbacks] = useState<QuestionFeedback[]>([])
-  const [answers, setAnswers] = useState<string[]>([])
-  const [timeLeft, setTimeLeft] = useState(150)
-  const [isRecording, setIsRecording] = useState(false)
-  const [loadError, setLoadError] = useState('')
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const recognitionRef = useRef<SpeechRecognition | null>(null)
-
-  const currentQ = questions[currentIdx]
-  const isLastQuestion = currentIdx >= questions.length - 1
-
-  // Generate questions on mount
-  useEffect(() => {
-    async function load() {
-      try {
-        const qs = await generateQuestions(
-          currentSession?.role || 'Software Engineer',
-          currentSession?.industry || 'Technology',
-          ['behavioral', 'technical', 'general'],
-          (currentSession?.difficulty as Difficulty) || 'medium',
-          5
-        )
-        setQuestions(qs)
-        setPhase('question')
-      } catch {
-        setLoadError('Failed to generate questions. Please check your connection and try again.')
-        setPhase('question')
-        // Fallback questions
-        setQuestions([
-          { id: 'q1', text: 'Tell me about yourself and why you\'re interested in this role.', type: 'general', hint: 'Keep it to 2 minutes. Focus on relevant experience.', difficulty: 'medium' },
-          { id: 'q2', text: 'Describe a challenging project you\'ve worked on and how you overcame obstacles.', type: 'behavioral', hint: 'Use the STAR method: Situation, Task, Action, Result.', difficulty: 'medium' },
-          { id: 'q3', text: 'How do you approach learning new technologies or frameworks on the job?', type: 'technical', hint: 'Give a concrete example of something you learned recently.', difficulty: 'medium' },
-          { id: 'q4', text: 'Describe a time you disagreed with a team decision. How did you handle it?', type: 'behavioral', hint: 'Show diplomacy and ability to commit even when you disagree.', difficulty: 'medium' },
-          { id: 'q5', text: 'Where do you see yourself professionally in 3–5 years?', type: 'general', hint: 'Align your goals with the company\'s growth direction.', difficulty: 'medium' },
-        ])
-      }
-    }
-    load()
-  }, [currentSession])
+  const [lastResult, setLastResult] = useState<AnswerResult | null>(null)
+  const [completedAnswers, setCompletedAnswers] = useState<CompletedAnswer[]>([])
+  const [finalResult, setFinalResult] = useState<{
+    overallScore: number
+    summary: { headline: string; strengths: string[]; improvements: string[]; nextSteps: string }
+  } | null>(null)
+  const [errorMsg, setErrorMsg] = useState('')
 
   // Timer
+  const timerLimit = persona?.timerSeconds ?? 180
+  const [timeLeft, setTimeLeft] = useState(timerLimit)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const startTimeRef = useRef<number>(Date.now())
+  const sessionStartRef = useRef<number>(Date.now())
+
+  // Start session on mount
   useEffect(() => {
-    if (phase !== 'question') {
-      if (timerRef.current) clearInterval(timerRef.current)
-      return
-    }
-    setTimeLeft(150)
+    sessionStartRef.current = Date.now()
+    startSessionAction({ personaId, role, difficulty, questionTypes })
+      .then(({ sessionId: sid, questions: qs }) => {
+        setSessionId(sid)
+        setQuestions(qs)
+        setPhase('question')
+        startTimer()
+      })
+      .catch(err => {
+        setErrorMsg(err.message ?? 'Failed to start session')
+        setPhase('error')
+      })
+
+    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function startTimer() {
+    startTimeRef.current = Date.now()
+    setTimeLeft(timerLimit)
+    if (timerRef.current) clearInterval(timerRef.current)
     timerRef.current = setInterval(() => {
-      setTimeLeft(t => {
-        if (t <= 1) {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
           clearInterval(timerRef.current!)
-          handleSubmit()
+          handleSubmit(true) // auto-submit when time runs out
           return 0
         }
-        return t - 1
+        return prev - 1
       })
     }, 1000)
-    return () => { if (timerRef.current) clearInterval(timerRef.current) }
-  }, [phase, currentIdx])
+  }
 
-  const handleSubmit = useCallback(async () => {
-    if (!answer.trim() || !currentQ) return
+  const handleSubmit = useCallback(async (timedOut = false) => {
+    if (!sessionId || phase === 'submitting') return
     if (timerRef.current) clearInterval(timerRef.current)
-    if (isRecording) stopRecording()
 
-    setPhase('evaluating')
-    const savedAnswer = answer
+    const currentQuestion = questions[currentIndex]
+    const timeTaken = Math.round((Date.now() - startTimeRef.current) / 1000)
+    const submittedAnswer = timedOut ? answer || '[No answer — time ran out]' : answer
+
+    setPhase('submitting')
 
     try {
-      const feedback = await evaluateAnswer(
-        currentQ,
-        savedAnswer,
-        currentSession?.role || 'Professional',
-        (currentSession?.difficulty as Difficulty) || 'medium'
-      )
-      setFeedbacks(prev => [...prev, feedback])
-      setAnswers(prev => [...prev, savedAnswer])
-      setPhase('feedback')
-    } catch {
-      // Fallback feedback
-      const fallback: QuestionFeedback = {
-        questionId: currentQ.id,
-        score: 70,
-        clarity: 68,
-        confidence: 72,
-        relevance: 70,
-        strengths: 'You provided a structured response with relevant examples.',
-        improvements: 'Try to be more specific with measurable outcomes.',
-        summary: 'Good attempt. Focus on specificity and quantifiable results to strengthen your answer.',
-      }
-      setFeedbacks(prev => [...prev, fallback])
-      setAnswers(prev => [...prev, savedAnswer])
-      setPhase('feedback')
-    }
-  }, [answer, currentQ, currentSession, isRecording])
-
-  function handleNext() {
-    if (isLastQuestion) {
-      // Save session
-      const totalScore = Math.round(feedbacks.reduce((a, f) => a + f.score, 0) / feedbacks.length)
-      addSession({
-        id: generateId(),
-        userId: user?.id || '1',
-        role: currentSession?.role || 'Professional',
-        industry: currentSession?.industry || 'General',
-        interviewType: currentSession?.interviewType || 'general',
-        difficulty: (currentSession?.difficulty as Difficulty) || 'medium',
-        mode: currentSession?.mode || 'text',
-        questions,
-        answers: answers.map((text, i) => ({ questionId: questions[i]?.id, text, duration: 150 - timeLeft })),
-        feedbacks,
-        overallScore: totalScore,
-        duration: questions.length * 150,
-        completedAt: new Date().toISOString(),
+      const result = await submitAnswerAction({
+        sessionId,
+        personaId,
+        role,
+        question: currentQuestion,
+        answer: submittedAnswer,
+        timeTakenSeconds: timeTaken,
       })
-      router.push('/practice/feedback')
+
+      setLastResult(result)
+      setCompletedAnswers(prev => [...prev, {
+        question: currentQuestion.text,
+        answer: submittedAnswer,
+        score: result.score,
+        feedback: result.feedback,
+      }])
+      setPhase('feedback')
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Evaluation failed')
+      setPhase('error')
+    }
+  }, [sessionId, phase, questions, currentIndex, answer, personaId, role])
+
+  async function handleNext() {
+    const nextIndex = currentIndex + 1
+
+    if (nextIndex >= questions.length) {
+      // Complete the session
+      setPhase('submitting')
+      const durationSecs = Math.round((Date.now() - sessionStartRef.current) / 1000)
+
+      try {
+        const result = await completeSessionAction({
+          sessionId: sessionId!,
+          personaId,
+          role,
+          answers: completedAnswers,
+          durationSecs,
+        })
+        setFinalResult(result)
+        setPhase('complete')
+      } catch (err: unknown) {
+        setErrorMsg(err instanceof Error ? err.message : 'Failed to complete session')
+        setPhase('error')
+      }
     } else {
-      setCurrentIdx(i => i + 1)
+      setCurrentIndex(nextIndex)
       setAnswer('')
+      setLastResult(null)
       setPhase('question')
+      startTimer()
     }
   }
 
-  function toggleRecording() {
-    if (isRecording) { stopRecording(); return }
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SR) return
-    const r = new SR()
-    r.continuous = true
-    r.interimResults = true
-    r.onresult = (e: SpeechRecognitionEvent) => {
-      let t = ''
-      for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript
-      setAnswer(t)
-    }
-    r.onend = () => setIsRecording(false)
-    r.start()
-    recognitionRef.current = r
-    setIsRecording(true)
+  async function handleAbandon() {
+    if (sessionId) await abandonSessionAction(sessionId)
+    router.push('/dashboard')
   }
 
-  function stopRecording() {
-    recognitionRef.current?.stop()
-    setIsRecording(false)
-  }
+  // ── Timer display
+  const mins = Math.floor(timeLeft / 60)
+  const secs = timeLeft % 60
+  const timerPct = (timeLeft / timerLimit) * 100
+  const timerUrgent = timeLeft <= 30
 
-  const currentFeedback = feedbacks[feedbacks.length - 1]
-  const progress = ((currentIdx + (phase === 'feedback' ? 1 : 0)) / questions.length) * 100
-
-  // Loading state
+  // ── Loading ───────────────────────────────────────────────────────────────
   if (phase === 'loading') {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--color-cz-bg)' }}>
-        <div className="text-center space-y-4">
-          <div className="w-12 h-12 rounded-full border-2 border-t-transparent animate-spin mx-auto" style={{ borderColor: 'var(--color-cz-gold)', borderTopColor: 'transparent' }} />
-          <p className="font-syne font-600" style={{ color: 'var(--color-cz-text)' }}>Generating your questions...</p>
-          <p className="text-sm" style={{ color: 'var(--color-cz-muted)' }}>Tailoring to your role and industry</p>
+      <div style={styles.center}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>{persona?.emoji ?? '🎯'}</div>
+          <p style={{ fontFamily: 'var(--font-syne)', fontWeight: 700, fontSize: '1.1rem', color: 'var(--color-cz-text)', margin: '0 0 0.5rem' }}>
+            Preparing your session…
+          </p>
+          <p style={{ fontSize: '0.825rem', color: 'var(--color-cz-muted)', margin: 0 }}>
+            {persona?.name} is getting your questions ready
+          </p>
         </div>
       </div>
     )
   }
 
-  return (
-    <div className="min-h-screen" style={{ background: 'var(--color-cz-bg)' }}>
-      {/* Top bar */}
-      <div
-        className="sticky top-0 z-10 px-6 py-3 flex items-center justify-between"
-        style={{ background: 'var(--color-cz-surface)', borderBottom: '1px solid var(--color-cz-border)' }}
-      >
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => router.push('/practice')}
-            className="text-xs flex items-center gap-1.5 transition-colors"
-            style={{ color: 'var(--color-cz-muted)' }}
-          >
-            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-            End
+  // ── Error ─────────────────────────────────────────────────────────────────
+  if (phase === 'error') {
+    return (
+      <div style={styles.center}>
+        <div style={{ textAlign: 'center', maxWidth: 400 }}>
+          <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>⚠️</div>
+          <p style={{ fontFamily: 'var(--font-syne)', fontWeight: 700, fontSize: '1.1rem', color: 'var(--color-cz-text)', margin: '0 0 0.5rem' }}>
+            Something went wrong
+          </p>
+          <p style={{ fontSize: '0.825rem', color: 'var(--color-cz-muted)', margin: '0 0 1.5rem' }}>{errorMsg}</p>
+          <button onClick={() => router.push('/practice')} style={styles.btnPrimary}>
+            Back to practice
           </button>
-          <span className="text-sm font-syne font-600" style={{ color: 'var(--color-cz-text)' }}>
-            Q {currentIdx + 1} <span style={{ color: 'var(--color-cz-muted)' }}>of {questions.length}</span>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Complete ──────────────────────────────────────────────────────────────
+  if (phase === 'complete' && finalResult) {
+    const { overallScore, summary } = finalResult
+    return (
+      <div style={{ maxWidth: 640, margin: '0 auto', padding: '2rem 1rem' }}>
+        {/* Score header */}
+        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+          <div style={{
+            width: 80, height: 80, borderRadius: '50%', margin: '0 auto 1rem',
+            background: `${scoreColor(overallScore)}18`,
+            border: `3px solid ${scoreColor(overallScore)}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontFamily: 'var(--font-syne)', fontWeight: 700, fontSize: '1.5rem',
+            color: scoreColor(overallScore),
+          }}>
+            {overallScore}%
+          </div>
+          <h1 style={{ fontFamily: 'var(--font-syne)', fontWeight: 700, fontSize: '1.4rem', color: 'var(--color-cz-text)', margin: '0 0 0.5rem' }}>
+            Session complete
+          </h1>
+          <p style={{ fontSize: '0.875rem', color: 'var(--color-cz-muted)', margin: 0 }}>
+            {summary.headline}
+          </p>
+        </div>
+
+        {/* Strengths + improvements */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+          <div style={{ ...styles.card, borderColor: '#4A7A5A40' }}>
+            <p style={{ margin: '0 0 0.75rem', fontWeight: 600, fontSize: '0.825rem', color: '#4A7A5A' }}>✓ Strengths</p>
+            {summary.strengths.map((s, i) => (
+              <p key={i} style={{ margin: '0 0 0.4rem', fontSize: '0.8rem', color: 'var(--color-cz-muted)', lineHeight: 1.5 }}>· {s}</p>
+            ))}
+          </div>
+          <div style={{ ...styles.card, borderColor: '#A0622A40' }}>
+            <p style={{ margin: '0 0 0.75rem', fontWeight: 600, fontSize: '0.825rem', color: '#A0622A' }}>↑ Improve</p>
+            {summary.improvements.map((s, i) => (
+              <p key={i} style={{ margin: '0 0 0.4rem', fontSize: '0.8rem', color: 'var(--color-cz-muted)', lineHeight: 1.5 }}>· {s}</p>
+            ))}
+          </div>
+        </div>
+
+        {/* Next steps */}
+        <div style={{ ...styles.card, marginBottom: '1.5rem', background: 'var(--color-cz-burg-dim)', borderColor: 'var(--color-cz-burg-border)' }}>
+          <p style={{ margin: '0 0 0.4rem', fontWeight: 600, fontSize: '0.825rem', color: 'var(--color-cz-burg)' }}>Next steps</p>
+          <p style={{ margin: 0, fontSize: '0.825rem', color: 'var(--color-cz-text)', lineHeight: 1.6 }}>{summary.nextSteps}</p>
+        </div>
+
+        {/* Per-question review */}
+        <h2 style={{ fontFamily: 'var(--font-syne)', fontWeight: 600, fontSize: '0.95rem', color: 'var(--color-cz-text)', margin: '0 0 0.875rem' }}>
+          Answer review
+        </h2>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '2rem' }}>
+          {completedAnswers.map((a, i) => (
+            <div key={i} style={styles.card}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                <span style={{ fontSize: '0.775rem', fontWeight: 600, color: 'var(--color-cz-muted)' }}>Q{i + 1}</span>
+                <span style={{ fontSize: '0.825rem', fontWeight: 700, color: scoreColor(a.score) }}>{a.score}%</span>
+              </div>
+              <p style={{ margin: '0 0 0.4rem', fontSize: '0.825rem', fontWeight: 600, color: 'var(--color-cz-text)' }}>{a.question}</p>
+              <p style={{ margin: '0 0 0.5rem', fontSize: '0.8rem', color: 'var(--color-cz-muted)', lineHeight: 1.5 }}>{a.answer}</p>
+              <p style={{ margin: 0, fontSize: '0.775rem', color: 'var(--color-cz-muted)', fontStyle: 'italic', lineHeight: 1.5 }}>{a.feedback}</p>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <button onClick={() => router.push('/practice')} style={{ ...styles.btnPrimary, flex: 1 }}>
+            Practice again
+          </button>
+          <button onClick={() => router.push('/analytics')} style={{ ...styles.btnSecondary, flex: 1 }}>
+            View analytics
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Active question or feedback ───────────────────────────────────────────
+  const currentQ = questions[currentIndex]
+  const progress = ((currentIndex) / questions.length) * 100
+
+  return (
+    <div style={{ maxWidth: 640, margin: '0 auto', padding: '2rem 1rem' }}>
+
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span style={{ fontSize: '1.1rem' }}>{persona?.emoji}</span>
+          <span style={{ fontSize: '0.825rem', fontWeight: 600, color: 'var(--color-cz-muted)' }}>
+            {persona?.name}
           </span>
         </div>
-
-        {/* Progress bar */}
-        <div className="flex-1 mx-8 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--color-cz-surface2)' }}>
-          <div
-            className="h-full rounded-full transition-all duration-500"
-            style={{ width: `${progress}%`, background: 'linear-gradient(90deg, var(--color-cz-gold), var(--color-cz-gold-light))' }}
-          />
-        </div>
-
-        {/* Timer */}
-        <div
-          className="font-syne font-600 text-sm px-3 py-1 rounded-full"
-          style={{
-            background: timeLeft <= 30 ? 'var(--color-cz-red-dim)' : 'var(--color-cz-surface2)',
-            color: timeLeft <= 30 ? 'var(--color-cz-red)' : 'var(--color-cz-muted)',
-            border: `1px solid ${timeLeft <= 30 ? 'rgba(192,97,74,0.3)' : 'var(--color-cz-border)'}`,
-          }}
-        >
-          {formatDuration(timeLeft)}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <span style={{ fontSize: '0.8rem', color: 'var(--color-cz-muted)' }}>
+            {currentIndex + 1} / {questions.length}
+          </span>
+          <button
+            onClick={handleAbandon}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.775rem', color: 'var(--color-cz-muted)' }}
+          >
+            Quit
+          </button>
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto px-6 py-10">
-        {/* Question card */}
-        <div
-          className="rounded-[var(--radius-lg)] p-6 mb-6 relative overflow-hidden"
-          style={{ background: 'var(--color-cz-surface)', border: '1px solid var(--color-cz-border)' }}
-        >
-          <div className="absolute top-0 left-0 right-0 h-0.5" style={{ background: 'linear-gradient(90deg, var(--color-cz-gold), var(--color-cz-gold-light))' }} />
-          <div className="flex items-center gap-2 mb-4">
-            <Badge variant={currentQ?.type as 'behavioral' | 'technical' | 'general' || 'general'}>
-              {currentQ?.type || 'general'}
-            </Badge>
-            <span className="text-xs capitalize" style={{ color: 'var(--color-cz-muted)' }}>
-              {currentSession?.difficulty || 'medium'}
-            </span>
-          </div>
-          <p className="font-syne font-600 text-xl leading-snug" style={{ color: 'var(--color-cz-text)' }}>
-            {currentQ?.text || 'Loading question...'}
-          </p>
-          {currentQ?.hint && (
-            <p className="text-xs mt-4 pt-4 leading-relaxed" style={{ color: 'var(--color-cz-muted)', borderTop: '1px solid var(--color-cz-border)' }}>
-              💡 {currentQ.hint}
+      {/* Progress bar */}
+      <div style={{ height: 3, background: 'var(--color-cz-border)', borderRadius: 2, marginBottom: '1.5rem', overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${progress}%`, background: 'var(--color-cz-burg)', borderRadius: 2, transition: 'width 0.3s ease' }}/>
+      </div>
+
+      {phase === 'feedback' && lastResult ? (
+        /* ── Feedback view ── */
+        <div>
+          <div style={{
+            ...styles.card,
+            borderColor: `${scoreColor(lastResult.score)}40`,
+            marginBottom: '1rem',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+              <span style={{ fontSize: '0.825rem', fontWeight: 600, color: 'var(--color-cz-muted)' }}>Your score</span>
+              <span style={{ fontSize: '1.5rem', fontWeight: 700, fontFamily: 'var(--font-syne)', color: scoreColor(lastResult.score) }}>
+                {lastResult.score}%
+              </span>
+            </div>
+            <p style={{ margin: '0 0 0.75rem', fontSize: '0.875rem', color: 'var(--color-cz-text)', lineHeight: 1.6 }}>
+              {lastResult.feedback}
             </p>
-          )}
-        </div>
-
-        {/* Answer + feedback section */}
-        {phase !== 'feedback' ? (
-          <>
-            <textarea
-              value={answer}
-              onChange={e => setAnswer(e.target.value)}
-              rows={7}
-              placeholder="Type your answer here... Be specific, use examples, and structure your response clearly."
-              className="cz-input resize-none mb-4 leading-relaxed"
-              disabled={phase === 'evaluating'}
-            />
-
-            <div className="flex gap-3">
-              {/* Voice button */}
-              <button
-                onClick={toggleRecording}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-[var(--radius-md)] border text-sm transition-all"
-                style={{
-                  background: isRecording ? 'rgba(192,97,74,0.1)' : 'var(--color-cz-surface2)',
-                  borderColor: isRecording ? 'rgba(192,97,74,0.4)' : 'var(--color-cz-border)',
-                  color: isRecording ? 'var(--color-cz-red)' : 'var(--color-cz-muted)',
-                  animation: isRecording ? 'pulse 1.5s infinite' : 'none',
-                }}
-              >
-                <span
-                  className="w-2 h-2 rounded-full"
-                  style={{ background: isRecording ? 'var(--color-cz-red)' : 'var(--color-cz-muted)' }}
-                />
-                {isRecording ? 'Recording...' : 'Voice'}
-              </button>
-
-              <Button
-                onClick={handleSubmit}
-                loading={phase === 'evaluating'}
-                disabled={!answer.trim() || phase === 'evaluating'}
-                className="flex-1 justify-center"
-              >
-                {phase === 'evaluating' ? 'Analysing...' : 'Submit Answer →'}
-              </Button>
+            <div style={{ padding: '0.6rem 0.75rem', background: 'var(--color-cz-burg-dim)', borderRadius: 6 }}>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--color-cz-burg)', lineHeight: 1.5 }}>
+                <strong>Tip:</strong> {lastResult.improvementTip}
+              </p>
             </div>
-          </>
-        ) : (
-          /* Feedback panel */
-          <div className="animate-fade-up space-y-4">
-            <div
-              className="rounded-[var(--radius-lg)] p-5 relative overflow-hidden"
-              style={{ background: 'var(--color-cz-surface)', border: '1px solid var(--color-cz-border)' }}
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <p className="text-xs uppercase tracking-wider mb-1" style={{ color: 'var(--color-cz-gold)' }}>AI Feedback</p>
-                  <p className="text-sm leading-relaxed" style={{ color: 'var(--color-cz-text)' }}>
-                    {currentFeedback?.summary}
-                  </p>
-                </div>
-                <ScoreRing score={currentFeedback?.score ?? 0} size={80} strokeWidth={6} />
-              </div>
-
-              {/* Dimension bars */}
-              <div className="space-y-2.5 mb-4">
-                {[
-                  { label: 'Clarity', val: currentFeedback?.clarity },
-                  { label: 'Confidence', val: currentFeedback?.confidence },
-                  { label: 'Relevance', val: currentFeedback?.relevance },
-                ].map(dim => (
-                  <div key={dim.label} className="flex items-center gap-3">
-                    <span className="text-xs w-20 shrink-0" style={{ color: 'var(--color-cz-muted)' }}>{dim.label}</span>
-                    <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--color-cz-surface2)' }}>
-                      <div
-                        className="h-full rounded-full transition-all duration-700"
-                        style={{
-                          width: `${dim.val ?? 0}%`,
-                          background: (dim.val ?? 0) >= 75 ? 'var(--color-cz-teal)' : (dim.val ?? 0) >= 55 ? 'var(--color-cz-gold)' : 'var(--color-cz-red)',
-                        }}
-                      />
-                    </div>
-                    <span className="text-xs font-syne font-600 w-8 text-right" style={{ color: 'var(--color-cz-muted)' }}>
-                      {dim.val}%
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-[var(--radius-md)] p-3" style={{ background: 'rgba(122,173,138,0.08)', border: '1px solid rgba(122,173,138,0.15)' }}>
-                  <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--color-cz-teal)' }}>Strength</p>
-                  <p className="text-xs leading-relaxed" style={{ color: 'var(--color-cz-text)' }}>{currentFeedback?.strengths}</p>
-                </div>
-                <div className="rounded-[var(--radius-md)] p-3" style={{ background: 'var(--color-cz-gold-dim)', border: '1px solid var(--color-cz-gold-border)' }}>
-                  <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--color-cz-gold)' }}>Improve</p>
-                  <p className="text-xs leading-relaxed" style={{ color: 'var(--color-cz-text)' }}>{currentFeedback?.improvements}</p>
-                </div>
-              </div>
-            </div>
-
-            <Button onClick={handleNext} size="lg" className="w-full justify-center">
-              {isLastQuestion ? 'View Full Results →' : `Next Question (${currentIdx + 2}/${questions.length}) →`}
-            </Button>
           </div>
-        )}
-      </div>
+
+          <button
+            onClick={handleNext}
+            style={styles.btnPrimary}
+          >
+            {currentIndex + 1 >= questions.length ? 'See final results →' : 'Next question →'}
+          </button>
+        </div>
+      ) : (
+        /* ── Question view ── */
+        <div>
+          {/* Type badge */}
+          {currentQ && (
+            <span style={{
+              display: 'inline-block',
+              padding: '0.2rem 0.65rem',
+              borderRadius: 20,
+              fontSize: '0.725rem',
+              fontWeight: 600,
+              background: `${TYPE_COLOR[currentQ.type]}18`,
+              color: TYPE_COLOR[currentQ.type],
+              marginBottom: '1rem',
+              letterSpacing: '0.02em',
+            }}>
+              {TYPE_LABEL[currentQ.type]}
+            </span>
+          )}
+
+          {/* Question */}
+          <div style={{ ...styles.card, marginBottom: '1.25rem' }}>
+            <p style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: 'var(--color-cz-text)', lineHeight: 1.6 }}>
+              {currentQ?.text}
+            </p>
+          </div>
+
+          {/* Timer */}
+          <div style={{ marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--color-cz-muted)' }}>Time remaining</span>
+              <span style={{
+                fontSize: '0.825rem',
+                fontWeight: 700,
+                color: timerUrgent ? '#8B3535' : 'var(--color-cz-text)',
+                fontFamily: 'var(--font-syne)',
+              }}>
+                {mins}:{secs.toString().padStart(2, '0')}
+              </span>
+            </div>
+            <div style={{ height: 4, background: 'var(--color-cz-border)', borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{
+                height: '100%',
+                width: `${timerPct}%`,
+                background: timerUrgent ? '#8B3535' : 'var(--color-cz-burg)',
+                borderRadius: 2,
+                transition: 'width 1s linear, background 0.3s',
+              }}/>
+            </div>
+          </div>
+
+          {/* Answer textarea */}
+          <textarea
+            value={answer}
+            onChange={e => setAnswer(e.target.value)}
+            placeholder="Type your answer here…"
+            rows={6}
+            disabled={phase === 'submitting'}
+            style={{
+              width: '100%',
+              padding: '0.875rem',
+              borderRadius: 8,
+              border: '1px solid var(--color-cz-border2)',
+              background: 'var(--color-cz-surface2)',
+              color: 'var(--color-cz-text)',
+              fontSize: '0.9rem',
+              resize: 'vertical',
+              outline: 'none',
+              fontFamily: 'inherit',
+              boxSizing: 'border-box',
+              marginBottom: '1rem',
+              opacity: phase === 'submitting' ? 0.6 : 1,
+            }}
+          />
+
+          <button
+            onClick={() => handleSubmit(false)}
+            disabled={phase === 'submitting' || !answer.trim()}
+            style={{
+              ...styles.btnPrimary,
+              opacity: phase === 'submitting' || !answer.trim() ? 0.5 : 1,
+              cursor: phase === 'submitting' || !answer.trim() ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {phase === 'submitting' ? 'Evaluating…' : 'Submit answer'}
+          </button>
+        </div>
+      )}
     </div>
   )
+}
+
+const styles = {
+  center: {
+    minHeight: '60vh',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  } as React.CSSProperties,
+  card: {
+    background: 'var(--color-cz-surface)',
+    border: '1px solid var(--color-cz-border)',
+    borderRadius: 10,
+    padding: '1rem',
+  } as React.CSSProperties,
+  btnPrimary: {
+    width: '100%',
+    padding: '0.8rem',
+    borderRadius: 8,
+    border: 'none',
+    background: 'var(--color-cz-burg)',
+    color: 'var(--color-cz-bg)',
+    fontFamily: 'var(--font-syne)',
+    fontWeight: 600,
+    fontSize: '0.9rem',
+    cursor: 'pointer',
+  } as React.CSSProperties,
+  btnSecondary: {
+    width: '100%',
+    padding: '0.8rem',
+    borderRadius: 8,
+    border: '1px solid var(--color-cz-border2)',
+    background: 'var(--color-cz-surface)',
+    color: 'var(--color-cz-text)',
+    fontFamily: 'var(--font-syne)',
+    fontWeight: 600,
+    fontSize: '0.9rem',
+    cursor: 'pointer',
+  } as React.CSSProperties,
 }
